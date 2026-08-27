@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { LOCATIONS } from "@/data/locations";
@@ -39,14 +39,28 @@ function markerIcon(status: LocationStatus, selected: boolean) {
   });
 }
 
+/** Leaflet needs a nudge whenever its container changes size — panes are shown
+ *  and hidden per breakpoint, and a map revealed from `display:none` renders blank. */
+function AutoResize() {
+  const map = useMap();
+  useEffect(() => {
+    const ro = new ResizeObserver(() => map.invalidateSize());
+    ro.observe(map.getContainer());
+    return () => ro.disconnect();
+  }, [map]);
+  return null;
+}
+
 function FlyToSelected({ selectedId }: { selectedId?: string }) {
   const map = useMap();
   useEffect(() => {
     const loc = LOCATIONS.find((l) => l.id === selectedId);
     if (!loc) return;
-    // Offset the center so the marker shows right of the floating location panel
+    // Offset the center so the marker clears the floating location panel,
+    // which only overlaps the map on wide viewports
     const zoom = Math.max(map.getZoom(), 12);
-    const point = map.project([loc.lat, loc.lng], zoom).subtract(L.point(310, 0));
+    const offset = map.getSize().x >= 768 ? 230 : 0;
+    const point = map.project([loc.lat, loc.lng], zoom).subtract(L.point(offset, 0));
     map.flyTo(map.unproject(point, zoom), zoom, { duration: 0.8 });
   }, [selectedId, map]);
   return null;
@@ -69,10 +83,12 @@ export default function MapView({ selectedId }: { selectedId?: string }) {
       <MapContainer
         center={[40.8, -74.09]}
         zoom={11}
-        zoomControl={true}
+        zoomControl={false}
         attributionControl={false}
         className="h-full w-full"
       >
+        {/* The floating location panel covers the map's left edge */}
+        <ZoomControl position="topright" />
         {/* Positron-style light basemap: Esri Light Gray Canvas, free and key-less */}
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
@@ -85,6 +101,7 @@ export default function MapView({ selectedId }: { selectedId?: string }) {
           maxZoom={18}
         />
         <FlyToSelected selectedId={selectedId} />
+        <AutoResize />
         {markers.map(({ loc, status }) => (
           <Marker
             key={loc.id}
@@ -96,8 +113,8 @@ export default function MapView({ selectedId }: { selectedId?: string }) {
         ))}
       </MapContainer>
 
-      {/* Legend */}
-      <div className="absolute right-4 bottom-4 z-[1000] rounded-xl bg-panel/95 px-4 py-3 shadow-md">
+      {/* Legend — bottom-left on phones so it clears the map/list toggle */}
+      <div className="absolute bottom-4 left-4 z-[1000] rounded-xl bg-panel/95 px-3 py-2 shadow-md md:right-4 md:left-auto md:px-4 md:py-3">
         <div className="flex flex-col gap-2 text-xs font-medium text-ink-soft">
           <div className="flex items-center gap-2">
             <span className="size-2.5 rounded-full bg-ok" /> Normal

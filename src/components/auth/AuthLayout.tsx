@@ -129,14 +129,20 @@ export default function AuthLayout({
         </div>
 
         {/* Right: form card */}
-        <div className="flex flex-1 items-center justify-center px-4 py-10">
-          <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-8 shadow-sm">
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-8 sm:px-6 md:py-10">
+          {/* The brand column is off-screen below lg — keep the branding */}
+          <div className="flex items-center gap-3 lg:hidden">
+            <Image src="/bk-logo.png" alt="Burger King" width={36} height={36} priority />
+            <span className="h-7 w-px bg-line" />
+            <span className="text-base font-semibold">Freezer Temperature Monitor</span>
+          </div>
+          <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-6 shadow-sm sm:p-8">
             {children}
           </div>
         </div>
       </div>
 
-      <footer className="flex items-center justify-between px-10 py-5 text-xs text-faint xl:px-16">
+      <footer className="flex flex-col items-center gap-3 px-5 py-5 text-center text-xs text-faint md:flex-row md:justify-between md:px-10 md:text-left xl:px-16">
         <span>© 2024 Burger King Company LLC. All rights reserved.</span>
         <div className="flex items-center gap-2">
           <a href="#" className="hover:text-muted">Privacy Policy</a>

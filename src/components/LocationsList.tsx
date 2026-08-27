@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react";
 import { LOCATIONS } from "@/data/locations";
@@ -59,7 +60,13 @@ function SortDropdown() {
   );
 }
 
-export default function LocationsList({ selectedId }: { selectedId?: string }) {
+export default function LocationsList({
+  selectedId,
+  className = "flex",
+}: {
+  selectedId?: string;
+  className?: string;
+}) {
   const sortMode = useAppStore((s) => s.sortMode);
 
   const rows = useMemo(() => {
@@ -83,14 +90,26 @@ export default function LocationsList({ selectedId }: { selectedId?: string }) {
   }, []);
 
   return (
-    <div className="z-10 flex w-[350px] shrink-0 flex-col border-r border-line bg-panel">
-      <div className="flex items-center justify-between px-5 pt-5 pb-3">
-        <h1 className="text-lg font-semibold">Locations</h1>
+    <div
+      className={`z-10 w-full min-w-0 flex-col bg-panel md:w-[320px] md:shrink-0 md:border-r md:border-line xl:w-[350px] ${className}`}
+    >
+      <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-5 md:pt-5">
+        <div className="flex items-center gap-2.5">
+          <Image
+            src="/bk-logo.png"
+            alt="Burger King"
+            width={28}
+            height={28}
+            className="md:hidden"
+            priority
+          />
+          <h1 className="text-lg font-semibold">Locations</h1>
+        </div>
         <SortDropdown />
       </div>
 
       {/* Summary cards — counted from the real data */}
-      <div className="grid grid-cols-3 gap-2.5 px-5 pb-4">
+      <div className="grid grid-cols-3 gap-2.5 px-4 pb-4 md:px-5">
         <div className="rounded-xl border border-line bg-panel p-3">
           <AlertTriangle size={18} className="text-alert" />
           <div className="mt-1.5 text-xl font-semibold leading-none">{counts.alert}</div>
@@ -113,7 +132,7 @@ export default function LocationsList({ selectedId }: { selectedId?: string }) {
           <Link
             key={loc.id}
             href={`/locations/${loc.id}`}
-            className={`flex items-center gap-3 border-b border-line-soft px-5 py-3 transition-colors ${
+            className={`flex items-center gap-3 border-b border-line-soft px-4 py-3.5 transition-colors md:px-5 md:py-3 ${
               loc.id === selectedId ? "bg-page" : "hover:bg-page/60"
             }`}
           >

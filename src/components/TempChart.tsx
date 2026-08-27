@@ -53,8 +53,8 @@ export default function TempChart({ unit }: { unit: Unit }) {
   }, [data, unit]);
 
   return (
-    <div className="rounded-xl border border-line bg-panel p-4">
-      <div className="mb-2 flex items-center justify-between">
+    <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm font-semibold">Temperature (°F)</div>
         <div className="flex overflow-hidden rounded-lg border border-line text-xs font-medium">
           {RANGES.map((r) => (
@@ -71,7 +71,7 @@ export default function TempChart({ unit }: { unit: Unit }) {
         </div>
       </div>
 
-      <div className="h-56 w-full">
+      <div className="h-48 w-full sm:h-56">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
             <CartesianGrid stroke="#eaecf0" vertical={false} />

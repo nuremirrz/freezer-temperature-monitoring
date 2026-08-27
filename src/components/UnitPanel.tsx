@@ -49,8 +49,8 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
   void minuteTick; // refresh "In this state" every minute
 
   return (
-    <div className="z-10 flex min-h-0 flex-1 flex-col overflow-y-auto bg-page">
-      <div className="mx-auto w-full max-w-3xl p-5">
+    <div className="@container z-10 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-page">
+      <div className="mx-auto w-full max-w-3xl p-4 md:p-5">
         {/* Overview tab bar — single item, others will come later */}
         <div className="mb-4 flex items-center justify-between border-b border-line">
           <span className="inline-block border-b-2 border-primary px-1 pb-2 text-sm font-semibold text-ink">
@@ -66,7 +66,7 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
         </div>
 
         {/* Unit description */}
-        <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-line bg-panel p-5">
+        <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-line bg-panel p-4 md:p-5">
           <div className="min-w-0">
             <h3 className="text-lg font-semibold">{unit.systemName}</h3>
             <div className="mb-4 text-sm text-muted">
@@ -90,18 +90,18 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
           <img
             src={UNIT_IMAGE[unit.type]}
             alt={UNIT_TYPE_LABEL[unit.type]}
-            className="h-32 w-32 shrink-0 rounded-lg border border-line-soft bg-page object-contain p-2"
+            className="h-20 w-20 shrink-0 rounded-lg border border-line-soft bg-page object-contain p-2 @sm:h-32 @sm:w-32"
           />
         </div>
 
         {/* Current State */}
         <div className="mb-4">
           <div className="mb-2 text-sm font-semibold">Current State</div>
-          <div className="grid grid-cols-2 gap-3 min-[1700px]:grid-cols-4">
-            <div className="rounded-xl border border-line bg-panel p-4">
+          <div className="grid grid-cols-2 gap-2.5 @3xl:grid-cols-4 md:gap-3">
+            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
               <div className="text-xs text-muted">Current Temp</div>
               <div
-                className={`mt-1 text-2xl font-semibold tabular-nums ${
+                className={`mt-1 text-xl font-semibold tabular-nums @xs:text-2xl ${
                   isAlert ? "text-alert" : ""
                 }`}
               >
@@ -114,30 +114,30 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
               )}
             </div>
 
-            <div className="rounded-xl border border-line bg-panel p-4">
+            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
               <div className="text-xs text-muted">Normal Range</div>
-              <div className="mt-1.5 text-xl font-semibold whitespace-nowrap tabular-nums">
+              <div className="mt-1.5 text-base font-semibold whitespace-nowrap tabular-nums @xs:text-lg @md:text-xl">
                 {formatRange(unit)}
               </div>
             </div>
 
-            <div className="rounded-xl border border-line bg-panel p-4">
+            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
               <div className="text-xs text-muted">In this state</div>
-              <div className="mt-1.5 text-xl font-semibold tabular-nums">
+              <div className="mt-1.5 text-lg font-semibold tabular-nums @xs:text-xl">
                 {formatDuration(since)}
               </div>
             </div>
 
-            <div className="rounded-xl border border-line bg-panel p-4">
+            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
               <div className="text-xs text-muted">Trend</div>
               {isOffline ? (
-                <div className="mt-1.5 text-xl font-semibold text-offline">—</div>
+                <div className="mt-1.5 text-lg font-semibold text-offline @xs:text-xl">—</div>
               ) : isAlert ? (
-                <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold text-alert">
+                <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold @xs:text-xl text-alert">
                   Rising <TrendingUp size={18} />
                 </div>
               ) : (
-                <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold text-ok">
+                <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold @xs:text-xl text-ok">
                   Stable <MoveRight size={18} />
                 </div>
               )}
@@ -150,7 +150,7 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
 
         {/* Recommendations — alert units only */}
         {isAlert && (
-          <div className="mt-4 rounded-xl border border-line bg-panel p-5">
+          <div className="mt-4 rounded-xl border border-line bg-panel p-4 md:p-5">
             <div className="mb-3 text-sm font-semibold">Recommendations</div>
             <ul className="space-y-2.5">
               {RECOMMENDATIONS.map(({ icon: Icon, text }) => (

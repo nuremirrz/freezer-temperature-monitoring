@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   Thermometer,
   CheckCircle2,
   WifiOff,
@@ -149,10 +151,12 @@ export default function LocationPanel({
   loc,
   selectedUnitId,
   compact = false,
+  className = "flex",
 }: {
   loc: BKLocation;
   selectedUnitId?: string;
   compact?: boolean;
+  className?: string;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("all");
@@ -176,15 +180,27 @@ export default function LocationPanel({
 
   return (
     <div
-      className={`z-10 flex min-h-0 flex-col overflow-y-auto bg-page ${
-        compact ? "w-[560px] shrink-0 border-r border-line" : "m-4 w-[600px] shrink-0 rounded-2xl shadow-lg"
-      }`}
+      className={`@container z-10 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-page md:flex-none ${
+        compact
+          ? "md:w-[400px] md:shrink-0 md:border-r md:border-line xl:w-[460px] 2xl:w-[560px]"
+          : "md:m-4 md:w-[420px] md:shrink-0 md:rounded-2xl md:shadow-lg lg:w-[520px] xl:w-[600px]"
+      } ${className}`}
     >
-      <div className="flex flex-col gap-3 p-5">
-        <div>
-          <h2 className="text-xl font-semibold">{loc.name}</h2>
-          <div className="text-sm text-muted">{shortAddress(loc)}</div>
-          <div className="mt-1 text-xs text-faint">{fullAddress(loc)}</div>
+      <div className="flex flex-col gap-3 p-4 md:p-5">
+        <div className="flex items-start gap-2">
+          {/* The list is off-screen below lg — give it a way back */}
+          <Link
+            href="/locations"
+            title="Back to locations"
+            className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-offline-soft hover:text-ink lg:hidden"
+          >
+            <ArrowLeft size={18} />
+          </Link>
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold">{loc.name}</h2>
+            <div className="text-sm text-muted">{shortAddress(loc)}</div>
+            <div className="mt-1 text-xs text-faint">{fullAddress(loc)}</div>
+          </div>
         </div>
 
         <StatusCard loc={loc} />
@@ -207,17 +223,68 @@ export default function LocationPanel({
           ))}
         </div>
 
+        {/* Units, as stacked cards on phones — six columns never fit */}
+        <div className="overflow-hidden rounded-xl border border-line bg-panel @md:hidden">
+          {visible.map((u) => {
+            const Icon = TYPE_ICON[u.type];
+            const temp = temps[u.id];
+            void minuteTick;
+            return (
+              <button
+                key={u.id}
+                onClick={() => router.push(`/locations/${loc.id}/units/${u.id}`)}
+                className="flex w-full items-center gap-3 border-b border-line-soft px-4 py-3 text-left last:border-0"
+              >
+                <Icon size={18} className="shrink-0 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{u.name}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                    <StatusDot status={u.status} />
+                    <span
+                      className={
+                        u.status === "alert"
+                          ? "text-alert"
+                          : u.status === "offline"
+                            ? "text-offline"
+                            : ""
+                      }
+                    >
+                      {STATUS_LABEL[u.status]}
+                    </span>
+                    <span className="text-faint">·</span>
+                    <span className="whitespace-nowrap">{formatRange(u)}</span>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div
+                    className={`text-sm font-semibold tabular-nums ${
+                      u.status === "alert" ? "text-alert" : ""
+                    }`}
+                  >
+                    {u.status === "offline" ? "—" : `${Math.round(temp)}°F`}
+                  </div>
+                  {u.status === "alert" && u.alertSince && (
+                    <div className="text-xs tabular-nums text-muted">
+                      {formatDuration(u.alertSince)}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Units table */}
-        <div className="overflow-hidden rounded-xl border border-line bg-panel">
+        <div className="hidden overflow-hidden rounded-xl border border-line bg-panel @md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-2.5 font-medium">Equipment</th>
                 <th className="px-2 py-2.5 font-medium">Status</th>
                 <th className="px-2 py-2.5 font-medium">Temperature</th>
-                <th className="px-2 py-2.5 font-medium">Normal Range</th>
+                <th className="hidden px-2 py-2.5 font-medium @lg:table-cell">Normal Range</th>
                 <th className="px-2 py-2.5 font-medium">Duration</th>
-                <th className="w-8 px-2 py-2.5" />
+                <th className="hidden w-8 px-2 py-2.5 @xl:table-cell" />
               </tr>
             </thead>
             <tbody>
@@ -262,13 +329,15 @@ export default function LocationPanel({
                     >
                       {u.status === "offline" ? "—" : `${Math.round(temp)}°F`}
                     </td>
-                    <td className="px-2 py-3 whitespace-nowrap text-muted">{formatRange(u)}</td>
+                    <td className="hidden px-2 py-3 whitespace-nowrap text-muted @lg:table-cell">
+                      {formatRange(u)}
+                    </td>
                     <td className="px-2 py-3 tabular-nums text-muted">
                       {u.status === "alert" && u.alertSince
                         ? formatDuration(u.alertSince)
                         : "—"}
                     </td>
-                    <td className="px-2 py-3">
+                    <td className="hidden px-2 py-3 @xl:table-cell">
                       <EllipsisVertical size={15} className="text-faint" />
                     </td>
                   </tr>

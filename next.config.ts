@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The dev overlay badge sits on top of the mobile bottom bar
+  devIndicators: false,
 };
 
 export default nextConfig;
