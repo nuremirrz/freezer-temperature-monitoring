@@ -11,6 +11,8 @@ npm run dev
 
 Open http://localhost:3000 — you will be redirected to `/login`. Enter any valid-looking email and any password (auth is mocked with a cookie flag).
 
+New here? [GUIDE.md](GUIDE.md) walks through every screen and includes a two-minute demo script (in Russian).
+
 ## What's inside
 
 | Screen | Route | Notes |
