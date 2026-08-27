@@ -73,8 +73,17 @@ export default function MapView({ selectedId }: { selectedId?: string }) {
         attributionControl={false}
         className="h-full w-full"
       >
-        {/* CARTO Positron-style light basemap; Stadia serves it keyless on localhost */}
-        <TileLayer url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png" />
+        {/* Positron-style light basemap: Esri Light Gray Canvas, free and key-less */}
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+          maxNativeZoom={16}
+          maxZoom={18}
+        />
+        <TileLayer
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          maxNativeZoom={16}
+          maxZoom={18}
+        />
         <FlyToSelected selectedId={selectedId} />
         {markers.map(({ loc, status }) => (
           <Marker
