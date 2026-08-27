@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-page: #f5f7fa;
+  --color-panel: #ffffff;
+  --color-ink: #101828;
+  --color-ink-soft: #344054;
+  --color-muted: #667085;
+  --color-faint: #98a2b3;
+  --color-line: #e4e7ec;
+  --color-line-soft: #eaecf0;
+
+  --color-primary: #0e1b33;
+  --color-primary-hover: #16233f;
+
+  --color-alert: #e5484d;
+  --color-alert-soft: #fef3f2;
+  --color-ok: #16a34a;
+  --color-ok-soft: #ecfdf3;
+  --color-offline: #98a2b3;
+  --color-offline-soft: #f2f4f7;
+
+  --color-accent: #2970ff;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Leaflet container should sit under floating panels */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #e8edf3;
+  font-family: var(--font-sans);
+}
+
+.map-marker {
+  background: transparent;
+  border: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

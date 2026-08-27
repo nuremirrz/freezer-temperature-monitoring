@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d7dde4"/>
+      <stop offset=".5" stop-color="#eef1f5"/>
+      <stop offset="1" stop-color="#c9d0d9"/>
+    </linearGradient>
+  </defs>
+  <rect x="48" y="18" width="104" height="158" rx="8" fill="url(#steel)" stroke="#9aa4b1" stroke-width="3"/>
+  <line x1="100" y1="22" x2="100" y2="172" stroke="#9aa4b1" stroke-width="3"/>
+  <rect x="88" y="52" width="6" height="34" rx="3" fill="#6b7684"/>
+  <rect x="106" y="52" width="6" height="34" rx="3" fill="#6b7684"/>
+  <rect x="56" y="26" width="36" height="10" rx="2" fill="#aeb8c4"/>
+  <g stroke="#7c8794" stroke-width="2.4" stroke-linecap="round">
+    <line x1="124" y1="120" x2="124" y2="144"/>
+    <line x1="113.6" y1="126" x2="134.4" y2="138"/>
+    <line x1="113.6" y1="138" x2="134.4" y2="126"/>
+  </g>
+  <rect x="56" y="176" width="12" height="8" rx="2" fill="#6b7684"/>
+  <rect x="132" y="176" width="12" height="8" rx="2" fill="#6b7684"/>
+</svg>
