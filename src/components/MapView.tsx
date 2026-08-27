@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { MapContainer, TileLayer, Marker } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { LOCATIONS } from "@/data/locations";
@@ -39,6 +39,19 @@ function markerIcon(status: LocationStatus, selected: boolean) {
   });
 }
 
+function FlyToSelected({ selectedId }: { selectedId?: string }) {
+  const map = useMap();
+  useEffect(() => {
+    const loc = LOCATIONS.find((l) => l.id === selectedId);
+    if (!loc) return;
+    // Offset the center so the marker shows right of the floating location panel
+    const zoom = Math.max(map.getZoom(), 12);
+    const point = map.project([loc.lat, loc.lng], zoom).subtract(L.point(310, 0));
+    map.flyTo(map.unproject(point, zoom), zoom, { duration: 0.8 });
+  }, [selectedId, map]);
+  return null;
+}
+
 export default function MapView({ selectedId }: { selectedId?: string }) {
   const router = useRouter();
 
@@ -62,6 +75,7 @@ export default function MapView({ selectedId }: { selectedId?: string }) {
       >
         {/* CARTO Positron-style light basemap; Stadia serves it keyless on localhost */}
         <TileLayer url="https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png" />
+        <FlyToSelected selectedId={selectedId} />
         {markers.map(({ loc, status }) => (
           <Marker
             key={loc.id}

@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useMemo } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   DoorOpen,
@@ -11,6 +12,7 @@ import {
   CalendarClock,
   TrendingUp,
   MoveRight,
+  X,
 } from "lucide-react";
 import { BKLocation, Unit, UNIT_IMAGE, UNIT_TYPE_LABEL, formatRange } from "@/data/types";
 import { hashString } from "@/data/rng";
@@ -50,10 +52,17 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
     <div className="z-10 flex min-h-0 flex-1 flex-col overflow-y-auto bg-page">
       <div className="mx-auto w-full max-w-3xl p-5">
         {/* Overview tab bar — single item, others will come later */}
-        <div className="mb-4 border-b border-line">
+        <div className="mb-4 flex items-center justify-between border-b border-line">
           <span className="inline-block border-b-2 border-primary px-1 pb-2 text-sm font-semibold text-ink">
             Overview
           </span>
+          <Link
+            href={`/locations/${loc.id}`}
+            title="Close"
+            className="mb-1 flex size-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-offline-soft hover:text-ink"
+          >
+            <X size={16} />
+          </Link>
         </div>
 
         {/* Unit description */}
