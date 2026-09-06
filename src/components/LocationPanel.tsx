@@ -108,9 +108,9 @@ function StatusCard({ loc }: { loc: BKLocation }) {
 function WeatherCard({ loc }: { loc: BKLocation }) {
   const [weather, setWeather] = useState<WeatherInfo | null | "loading">("loading");
 
+  // Remounted via `key` when the location changes, so state starts fresh
   useEffect(() => {
     let alive = true;
-    setWeather("loading");
     fetchWeather(loc.lat, loc.lng).then((w) => alive && setWeather(w));
     const id = setInterval(
       () => fetchWeather(loc.lat, loc.lng).then((w) => alive && setWeather(w)),
@@ -204,7 +204,7 @@ export default function LocationPanel({
         </div>
 
         <StatusCard loc={loc} />
-        <WeatherCard loc={loc} />
+        <WeatherCard key={loc.id} loc={loc} />
 
         {/* View tabs */}
         <div className="mt-1 flex flex-wrap gap-1.5">

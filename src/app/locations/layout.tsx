@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { useSelectedLayoutSegments } from "next/navigation";
 import { Map as MapIcon, List as ListIcon } from "lucide-react";
@@ -13,6 +13,8 @@ import { useAppStore } from "@/store/useAppStore";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
+const subscribeNoop = () => () => {};
+
 export default function LocationsLayout({ children }: { children: React.ReactNode }) {
   const segments = useSelectedLayoutSegments();
   const locationId = segments[0];
@@ -22,11 +24,11 @@ export default function LocationsLayout({ children }: { children: React.ReactNod
   const unit = loc && unitId ? getUnit(loc.id, unitId) : undefined;
 
   const startSimulation = useAppStore((s) => s.startSimulation);
-  const [mounted, setMounted] = useState(false);
+  // false during SSR/hydration, true once on the client
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const [mobileMap, setMobileMap] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     startSimulation();
   }, [startSimulation]);
 

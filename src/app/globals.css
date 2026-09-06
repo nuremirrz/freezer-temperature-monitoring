@@ -21,6 +21,8 @@
   --color-ok-soft: #ecfdf3;
   --color-offline: #98a2b3;
   --color-offline-soft: #f2f4f7;
+  --color-warn: #d97706;
+  --color-warn-soft: #fffbeb;
 
   --color-accent: #2970ff;
 }

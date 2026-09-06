@@ -4,20 +4,12 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  DoorOpen,
-  Wrench,
-  Fan,
-  CalendarClock,
-  TrendingUp,
-  MoveRight,
-  X,
-} from "lucide-react";
+import { AlertTriangle, TrendingUp, MoveRight, X } from "lucide-react";
 import { BKLocation, Unit, UNIT_IMAGE, UNIT_TYPE_LABEL, formatRange } from "@/data/types";
 import { hashString } from "@/data/rng";
 import { useAppStore, formatDuration } from "@/store/useAppStore";
 import TempChart from "./TempChart";
+import ServiceHistory from "./ServiceHistory";
 
 // Pseudo "state started" moments for non-alert units, stable for the session
 const stateSinceCache = new Map<string, number>();
@@ -30,13 +22,6 @@ function stateSince(unit: Unit): number {
   stateSinceCache.set(unit.id, since);
   return since;
 }
-
-const RECOMMENDATIONS = [
-  { icon: DoorOpen, text: "Check if door was left open" },
-  { icon: Wrench, text: "Inspect door gasket" },
-  { icon: Fan, text: "Verify evaporator fan operation" },
-  { icon: CalendarClock, text: "Schedule technician if trend continues" },
-];
 
 export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }) {
   const temp = useAppStore((s) => s.temps[unit.id]);
@@ -148,22 +133,8 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
         {/* Chart */}
         <TempChart unit={unit} />
 
-        {/* Recommendations — alert units only */}
-        {isAlert && (
-          <div className="mt-4 rounded-xl border border-line bg-panel p-4 md:p-5">
-            <div className="mb-3 text-sm font-semibold">Recommendations</div>
-            <ul className="space-y-2.5">
-              {RECOMMENDATIONS.map(({ icon: Icon, text }) => (
-                <li key={text} className="flex items-center gap-3 text-sm text-ink-soft">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-alert-soft">
-                    <Icon size={16} className="text-alert" />
-                  </span>
-                  {text}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {/* Service log: PM visits shared with Maintenance Compliance, plus repairs & install */}
+        <ServiceHistory unit={unit} loc={loc} />
       </div>
     </div>
   );

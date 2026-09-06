@@ -3,13 +3,25 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { MapPin, LineChart, Bell, Settings, LogOut } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { MapPin, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth";
+
+const NAV = [
+  { href: "/locations", title: "Locations", icon: MapPin },
+  { href: "/maintenance", title: "Maintenance Compliance", icon: ClipboardCheck },
+] as const;
+
+const COMING_SOON = [
+  { title: "Reports", icon: LineChart },
+  { title: "Alerts", icon: Bell },
+  { title: "Settings", icon: Settings },
+] as const;
 
 export default function Sidebar() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleLogout = () => {
     signOut();
@@ -24,34 +36,33 @@ export default function Sidebar() {
         </Link>
 
         <nav className="flex flex-1 items-center justify-around gap-1 md:flex-none md:flex-col md:justify-start md:gap-2">
-          <Link
-            href="/locations"
-            title="Locations"
-            className="flex size-10 items-center justify-center rounded-lg bg-offline-soft text-ink"
-          >
-            <MapPin size={20} />
-          </Link>
-          <button
-            title="Reports (coming soon)"
-            disabled
-            className="flex size-10 cursor-not-allowed items-center justify-center rounded-lg text-faint/70"
-          >
-            <LineChart size={20} />
-          </button>
-          <button
-            title="Alerts (coming soon)"
-            disabled
-            className="flex size-10 cursor-not-allowed items-center justify-center rounded-lg text-faint/70"
-          >
-            <Bell size={20} />
-          </button>
-          <button
-            title="Settings (coming soon)"
-            disabled
-            className="flex size-10 cursor-not-allowed items-center justify-center rounded-lg text-faint/70"
-          >
-            <Settings size={20} />
-          </button>
+          {NAV.map(({ href, title, icon: Icon }) => {
+            const active = pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                title={title}
+                className={`flex size-10 items-center justify-center rounded-lg transition-colors ${
+                  active
+                    ? "bg-offline-soft text-ink"
+                    : "text-muted hover:bg-offline-soft hover:text-ink"
+                }`}
+              >
+                <Icon size={20} />
+              </Link>
+            );
+          })}
+          {COMING_SOON.map(({ title, icon: Icon }) => (
+            <button
+              key={title}
+              title={`${title} (coming soon)`}
+              disabled
+              className="flex size-10 cursor-not-allowed items-center justify-center rounded-lg text-faint/70"
+            >
+              <Icon size={20} />
+            </button>
+          ))}
         </nav>
 
         <div className="md:mt-auto">

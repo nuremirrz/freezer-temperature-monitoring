@@ -20,7 +20,8 @@ New here? [GUIDE.md](GUIDE.md) walks through every screen and includes a two-min
 | Sign in / Create account | `/login`, `/register` | Mock auth, client-side validation, Google/SSO are demo stubs |
 | Locations | `/locations` | 25 locations (3 alert / 2 offline / 20 normal), summary cards, Alerts-first & Name sorting, Leaflet map with status markers + legend |
 | Location units | `/locations/[id]` | Overall status card, live outdoor weather (Open-Meteo), equipment tabs, units table with live temperatures & alert durations |
-| Unit detail | `/locations/[id]/units/[unitId]` | Overview card (model / serial / year / image), Current State tiles, 24H / 7D / 30D chart with threshold line, recommendations for alert units |
+| Unit detail | `/locations/[id]/units/[unitId]` | Overview card (model / serial / year / image), Current State tiles, 24H / 7D / 30D chart with threshold line, Service History (PM visits, repairs, installation) |
+| Maintenance Compliance | `/maintenance` | 3 preventive-maintenance visits per year per location: summary cards, search, status filter, year picker; progress / last & next PM / status per location |
 
 ## Real-time simulation
 
