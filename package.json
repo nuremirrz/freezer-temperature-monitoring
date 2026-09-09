@@ -15,7 +15,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "fixture": "tsx scripts/send-fixture.mts",
-    "offline-check": "tsx scripts/offline-check.mts"
+    "offline-check": "tsx scripts/offline-check.mts",
+    "fixture:lht65n": "tsx scripts/send-fixture.mts --file fixtures/ttn-uplink-lht65n.json"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

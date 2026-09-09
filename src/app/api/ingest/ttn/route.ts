@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { parseTtnUplink } from "@/lib/ttn/parse";
+import { parseTtnUplink, ParsedUplink } from "@/lib/ttn/parse";
 import { processNewReading, resolveOfflineForSensor } from "@/lib/alerts/service";
 
 export const runtime = "nodejs";
@@ -10,9 +10,11 @@ export const dynamic = "force-dynamic";
  * POST /api/ingest/ttn — The Things Network webhook (Uplink message only).
  *
  * 1. X-Webhook-Secret must match TTN_WEBHOOK_SECRET → otherwise 401
- * 2. Parse tolerantly; unknown dev_eui → UnknownUplink, 200
- * 3. One Reading per connected channel (duplicates ignored), sensor + gateway heartbeat
- * 4. Alerts are evaluated after the writes; notifications never block the response
+ * 2. Parse tolerantly; the branch (LTC2 / LHT65N) is chosen by Node_type
+ * 3. Unknown dev_eui or unknown Node_type → UnknownUplink (with a reason), 200
+ * 4. One Reading per connected + mapped channel (duplicates ignored);
+ *    sensor heartbeat, battery, ambient (LHT65N) and gateway heartbeat are updated
+ * 5. Alerts are evaluated after the writes; notifications never block the response
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.TTN_WEBHOOK_SECRET;
@@ -35,7 +37,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.ok) {
     // Can't attribute it to a device, but don't lose it either
     await prisma.unknownUplink.create({
-      data: { devEui: "UNPARSEABLE", payload: body as object, receivedAt: now },
+      data: { devEui: "UNPARSEABLE", reason: `unparseable: ${parsed.error}`, payload: body as object, receivedAt: now },
     });
     return NextResponse.json({ status: "unparseable", error: parsed.error }, { status: 200 });
   }
@@ -48,9 +50,51 @@ export async function POST(req: NextRequest) {
 
   if (!sensor) {
     await prisma.unknownUplink.create({
-      data: { devEui: u.devEui, payload: body as object, receivedAt: u.receivedAt },
+      data: { devEui: u.devEui, reason: "unknown_device", payload: body as object, receivedAt: u.receivedAt },
     });
-    return NextResponse.json({ status: "unknown_device", devEui: u.devEui }, { status: 200 });
+    return NextResponse.json({ status: "unknown_device", devEui: u.devEui, nodeType: u.nodeType ?? null }, { status: 200 });
+  }
+
+  // Heartbeat first — the device is alive even if we can't read its temperatures.
+  // Only overwrite fields the uplink actually carried.
+  const seenAt = sensor.lastSeenAt && sensor.lastSeenAt > u.receivedAt ? sensor.lastSeenAt : u.receivedAt;
+  await prisma.sensor.update({
+    where: { id: sensor.id },
+    data: {
+      lastSeenAt: seenAt,
+      ...(u.nodeType !== undefined ? { nodeType: u.nodeType } : {}),
+      ...(u.deviceId !== undefined ? { ttnDeviceId: u.deviceId } : {}),
+      ...(u.batteryV !== undefined ? { batteryV: u.batteryV } : {}),
+      ...(u.batteryPct !== undefined ? { batteryPct: u.batteryPct } : {}),
+      ...(u.batStatus !== undefined ? { batStatus: u.batStatus } : {}),
+      ...(u.ambientTempF !== undefined ? { ambientTempF: u.ambientTempF } : {}),
+      ...(u.ambientHum !== undefined ? { ambientHum: u.ambientHum } : {}),
+      ...(u.gateway?.rssi !== undefined ? { lastRssi: Math.round(u.gateway.rssi) } : {}),
+      ...(u.gateway?.snr !== undefined ? { lastSnr: u.gateway.snr } : {}),
+    },
+  });
+  if (u.gateway?.gatewayId) {
+    await prisma.gateway.updateMany({
+      where: { ttnGatewayId: u.gateway.gatewayId },
+      data: { lastSeenAt: seenAt },
+    });
+  }
+
+  if (u.unsupportedNodeType) {
+    // A decoder we don't know: keep the payload for inspection, don't invent readings
+    await prisma.unknownUplink.create({
+      data: {
+        devEui: u.devEui,
+        reason: `unsupported_node_type:${u.nodeType ?? "missing"}`,
+        payload: body as object,
+        receivedAt: u.receivedAt,
+      },
+    });
+    await safeAlerts(() => resolveOfflineForSensor(sensor.id, now));
+    return NextResponse.json(
+      { status: "unsupported_node_type", devEui: u.devEui, nodeType: u.nodeType ?? null },
+      { status: 200 },
+    );
   }
 
   // Readings — one per channel that is both reporting and wired to a unit
@@ -77,28 +121,8 @@ export async function POST(req: NextRequest) {
     if (res.count > 0) inserted.push({ unitId: mapping.unitId, channel: ch.channel, tempF: ch.tempF });
   }
 
-  // Heartbeats: only overwrite fields the uplink actually carried
-  const seenAt = sensor.lastSeenAt && sensor.lastSeenAt > u.receivedAt ? sensor.lastSeenAt : u.receivedAt;
-  await prisma.sensor.update({
-    where: { id: sensor.id },
-    data: {
-      lastSeenAt: seenAt,
-      ...(u.deviceId !== undefined ? { ttnDeviceId: u.deviceId } : {}),
-      ...(u.batteryV !== undefined ? { batteryV: u.batteryV } : {}),
-      ...(u.batteryPct !== undefined ? { batteryPct: u.batteryPct } : {}),
-      ...(u.gateway?.rssi !== undefined ? { lastRssi: Math.round(u.gateway.rssi) } : {}),
-      ...(u.gateway?.snr !== undefined ? { lastSnr: u.gateway.snr } : {}),
-    },
-  });
-  if (u.gateway?.gatewayId) {
-    await prisma.gateway.updateMany({
-      where: { ttnGatewayId: u.gateway.gatewayId },
-      data: { lastSeenAt: seenAt },
-    });
-  }
-
   // Alerts — after the writes. Cheap queries; notifications inside are fire-and-forget.
-  try {
+  await safeAlerts(async () => {
     await resolveOfflineForSensor(sensor.id, now);
     for (const r of inserted) {
       await processNewReading(
@@ -106,22 +130,33 @@ export async function POST(req: NextRequest) {
         now,
       );
     }
+  });
+
+  return NextResponse.json(summary(u, inserted.length, unmapped), { status: 200 });
+}
+
+/** The readings are already stored; alert evaluation must not turn a stored uplink into an error. */
+async function safeAlerts(fn: () => Promise<void>) {
+  try {
+    await fn();
   } catch (err) {
-    // The readings are already stored; alert evaluation must not turn a stored uplink into an error
     console.error("[ingest] alert evaluation failed:", err instanceof Error ? err.message : err);
   }
+}
 
-  return NextResponse.json(
-    {
-      status: "ok",
-      devEui: u.devEui,
-      measuredAt: u.receivedAt.toISOString(),
-      readings: inserted.length,
-      duplicates: u.channels.length - unmapped.length - inserted.length,
-      skippedChannels: u.skippedChannels,
-      unmappedChannels: unmapped,
-      ...(u.receivedAtFallback ? { warning: "received_at missing — used server time" } : {}),
-    },
-    { status: 200 },
-  );
+function summary(u: ParsedUplink, readings: number, unmapped: number[]) {
+  return {
+    status: "ok",
+    devEui: u.devEui,
+    nodeType: u.nodeType ?? null,
+    measuredAt: u.receivedAt.toISOString(),
+    readings,
+    duplicates: u.channels.length - unmapped.length - readings,
+    skippedChannels: u.skippedChannels,
+    unmappedChannels: unmapped,
+    ...(u.ambientTempF !== undefined || u.ambientHum !== undefined
+      ? { ambient: { tempF: u.ambientTempF ?? null, hum: u.ambientHum ?? null } }
+      : {}),
+    ...(u.receivedAtFallback ? { warning: "received_at missing — used server time" } : {}),
+  };
 }

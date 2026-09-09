@@ -4,6 +4,7 @@ import {
   isBackInRange,
   isOutOfRange,
   isSensorOffline,
+  offlineAfterSec,
   canNotify,
   fullyOfflineLocations,
 } from "./rules";
@@ -128,13 +129,28 @@ describe("offline", () => {
   const now = new Date("2026-09-09T12:00:00Z");
   const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000);
 
-  it("is online within 16 minutes of the last uplink", () => {
+  it("threshold is three missed uplinks plus a minute", () => {
+    expect(offlineAfterSec()).toBe(960); // 5-minute devices → 16 min
+    expect(offlineAfterSec(300)).toBe(960);
+    expect(offlineAfterSec(120)).toBe(420); // 2-minute devices → 7 min
+  });
+
+  it("5-minute device: online within 16 minutes, offline after", () => {
     expect(isSensorOffline(minutesAgo(5), now)).toBe(false);
     expect(isSensorOffline(minutesAgo(15), now)).toBe(false);
     expect(isSensorOffline(minutesAgo(16), now)).toBe(false);
-  });
-  it("is offline after 16 minutes of silence, or when never seen", () => {
     expect(isSensorOffline(minutesAgo(17), now)).toBe(true);
+  });
+
+  it("2-minute device: online within 7 minutes, offline after", () => {
+    const t = offlineAfterSec(120);
+    expect(isSensorOffline(minutesAgo(6), now, t)).toBe(false);
+    expect(isSensorOffline(minutesAgo(7), now, t)).toBe(false);
+    expect(isSensorOffline(minutesAgo(8), now, t)).toBe(true);
+    expect(isSensorOffline(minutesAgo(8), now)).toBe(false); // same silence is fine for a 5-minute device
+  });
+
+  it("a sensor that has never reported is offline", () => {
     expect(isSensorOffline(null, now)).toBe(true);
   });
 

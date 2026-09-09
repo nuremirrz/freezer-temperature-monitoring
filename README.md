@@ -52,6 +52,7 @@ The demo UI above runs on mock data. The **pilot backend** in this same repo is 
 ```bash
 cp .env.example .env            # DATABASE_URL, TTN_WEBHOOK_SECRET, optional Telegram
 npx prisma dev -n qimby -d      # local Postgres without Docker; paste the TCP url into .env
+                                # (also set SHADOW_DATABASE_URL to its shadow server — see .env.example — for `migrate dev`)
 npm run db:migrate              # apply migrations (creates the database)
 npm run db:seed                 # 5 locations, 5 gateways, 25 sensors, 40 units
 npm run dev
@@ -67,27 +68,32 @@ Useful scripts:
 | `npm run fixture -- --at now --temp1 15.2 --temp2 61` | Fresh timestamp + custom °F per channel (channel 1 = Teaneck **Freezer - Back**, channel 2 = **Freezer - Front**) |
 | `npm run fixture -- --temp2 disconnected` | Simulate an unplugged probe (Dragino sentinel 327.67 °C → channel skipped) |
 | `npm run fixture -- --dev-eui FILL_ME_9` | Uplink from another / unknown device |
+| `npm run fixture:lht65n` | LHT65N fixture (`draginotst` → Teaneck **Reach-in Freezer**); `-- --at now --temp1 12 --ambient 71 --hum 55` to drive it |
+| `npm run fixture:lht65n -- --node-type LSN50v2` | Unknown decoder → lands in `UnknownUplink` with a reason |
 | `npm run offline-check` | One pass of the offline check (for cron; see below) |
 | `npm run db:studio` | Browse the database |
 
 ### Data model (Prisma)
 
-`Location` → `Gateway`, `Unit` (type + per-unit `rangeMinF/rangeMaxF`), `Sensor` (dev_eui, battery, rssi, `lastSeenAt`) → `SensorChannel` (channel 1|2 → unit, nullable) → `Reading` (unique on sensor+channel+measuredAt), `Alert` (temp_out_of_range | offline), `UnknownUplink` (payloads from unknown dev_eui — nothing is dropped silently). All timestamps are `timestamptz` in UTC; each location carries its `timezone` (`America/New_York`) for display.
+`Location` → `Gateway`, `Unit` (type + per-unit `rangeMinF/rangeMaxF`), `Sensor` (dev_eui, `nodeType`, battery + `batStatus`, rssi, `expectedIntervalSec`, LHT65N `ambientTempF/ambientHum`, `lastSeenAt`) → `SensorChannel` (channel 1|2 → unit, nullable) → `Reading` (unique on sensor+channel+measuredAt), `Alert` (temp_out_of_range | offline), `UnknownUplink` (payloads from unknown dev_eui or unknown Node_type, with a `reason` — nothing is dropped silently). All timestamps are `timestamptz` in UTC; each location carries its `timezone` (`America/New_York`) for display.
 
 Default ranges by type: freezer / walk-in freezer / walk-in cooler **−10…+10 °F**, AC **55–58 °F**. Stored per unit so they can be overridden.
 
 ### Ingest — `POST /api/ingest/ttn`
 
 1. `X-Webhook-Secret` must equal `TTN_WEBHOOK_SECRET` → otherwise **401**.
-2. Body is parsed tolerantly (`src/lib/ttn/parse.ts`, zod): only `dev_eui` is required; missing rssi/battery never blocks a temperature. Temperature is taken from `TempF_Channel1/2` (falls back to converting `Temp_Channel1/2`), time from `uplink_message.received_at`. Dragino "probe not connected" sentinels (327.67 / −0.01 °C) are skipped. The body may be the raw TTN webhook or wrapped in `{ data }`.
-3. Unknown `dev_eui` → row in `UnknownUplink`, **200**.
-4. One `Reading` per channel wired to a unit; duplicates (same sensor + channel + time) are ignored. Sensor battery/rssi/snr/`lastSeenAt` and gateway `lastSeenAt` are updated.
+2. Body is parsed tolerantly (`src/lib/ttn/parse.ts`, zod): only `dev_eui` is required; missing rssi/battery never blocks a temperature. Time comes from `uplink_message.received_at`. The body may be the raw TTN webhook or wrapped in `{ data }`. The decoder branch is chosen by `decoded_payload.Node_type` (inferred from the field names when missing):
+   - **LTC2** — two probes: `TempF_Channel1/2` (falls back to converting `Temp_Channel1/2`) → channels 1 and 2.
+   - **LHT65N** — one probe: `TempF_TMP117` → channel 1. The built-in air sensor `TempF_SHT` / `Hum_SHT` is stored on the sensor as `ambientTempF` / `ambientHum`, never as a reading. `Bat_status` → `Sensor.batStatus`.
+   - Dragino "probe not connected" sentinels (327.67 / −0.01 °C) are skipped for both types.
+3. Unknown `dev_eui` → `UnknownUplink` (reason `unknown_device`), **200**. Known device with an unknown `Node_type` → `UnknownUplink` (reason `unsupported_node_type:<type>`), the sensor heartbeat is still recorded, **200**.
+4. One `Reading` per channel wired to a unit (LHT65N sensors only have channel 1); duplicates (same sensor + channel + time) are ignored. Sensor `nodeType`, battery/rssi/snr/ambient/`lastSeenAt` and gateway `lastSeenAt` are updated.
 5. Alerts are evaluated after the writes; notifications are fire-and-forget, so the response never waits on Telegram.
 
 ### Alert rules (`src/lib/alerts/rules.ts`, pure + tested)
 
 - **Temp out of range** opens after **2 consecutive** out-of-range readings (a single spike is ignored) and tracks `peakTempF`. It closes with a **2 °F hysteresis on the violated side**: a high alert on −10…10 closes at ≤ 8 °F, a low one at ≥ −8 °F. The hysteresis is directional on purpose — a symmetric 2 °F band would be empty for the 3 °F-wide AC range.
-- **Offline**: a sensor silent for **> 16 min** gets an offline alert per mapped unit. When *every* sensor at a location is silent, one location-wide notification is sent (gateway / internet problem) instead of five. The alert resolves as soon as the sensor reports again.
+- **Offline**: a sensor silent for **more than 3 × `expectedIntervalSec` + 60 s** gets an offline alert per mapped unit (5-minute devices → 16 min, the 2-minute `draginotst` → 7 min; the interval lives on the `Sensor` row). When *every* sensor at a location is silent, one location-wide notification is sent (gateway / internet problem) instead of five. The alert resolves as soon as the sensor reports again.
 - Unit status is derived, never stored: open temp alert → `alert`; open offline alert or no reading ever → `offline`; else `normal`. Location status is the worst of its units.
 
 The offline check runs every minute inside the Next.js server (`src/instrumentation.ts`). For a multi-instance deploy set `OFFLINE_CHECK_DISABLED=1` and run `npm run offline-check` from cron instead.
@@ -133,4 +139,12 @@ Put the printed `https://…` origin into the TTN webhook Base URL. Uplinks land
 
 ### Wiring real sensors
 
-The seed creates sensors with placeholder EUIs `FILL_ME_1 … FILL_ME_25` (Teaneck sensor #1 is the real test device `A84041784362379C` from the fixture). Replace them in `prisma/seed.ts` or directly in the `Sensor` table; until then those sensors are legitimately "offline". Anything TTN sends from an EUI we don't know ends up in `UnknownUplink` — a convenient list of what still needs mapping.
+Teaneck carries the three real devices from the TTN test application:
+
+| dev_eui | TTN device | Node_type | Interval | Wired to |
+| --- | --- | --- | --- | --- |
+| `A84041784362379C` | `draginotst2` | LTC2 | 5 min | ch1 → Freezer - Back, ch2 → Freezer - Front |
+| `A84041B54D625182` | `draginotst` | LHT65N | 2 min | ch1 → Reach-in Freezer |
+| `A8404113CA625184` | `dragino-irvine-1` | seeded as LHT65N (unconfirmed) | 5 min | ch1 → Walk-in Freezer |
+
+`nodeType` is overwritten by every real uplink, so an unconfirmed type corrects itself on first contact. Every other sensor is a placeholder `FILL_ME_n` — replace the EUI in `prisma/seed.ts` (or the `Sensor` table) when the hardware is installed; until then those sensors are legitimately "offline". Anything TTN sends from an EUI we don't know ends up in `UnknownUplink` — a convenient list of what still needs mapping.

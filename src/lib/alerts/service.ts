@@ -6,7 +6,7 @@ import {
   isSensorOffline,
   canNotify,
   fullyOfflineLocations,
-  OFFLINE_AFTER_MIN,
+  offlineAfterSec,
 } from "./rules";
 
 /**
@@ -228,9 +228,11 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
     // Was the whole location down? Then announce the location coming back rather than one sensor.
     const siblings = await prisma.sensor.findMany({
       where: { locationId: sensor.locationId, id: { not: sensor.id } },
-      select: { lastSeenAt: true },
+      select: { lastSeenAt: true, expectedIntervalSec: true },
     });
-    const wholeLocationWasDown = siblings.every((s) => isSensorOffline(s.lastSeenAt, now));
+    const wholeLocationWasDown = siblings.every((s) =>
+      isSensorOffline(s.lastSeenAt, now, offlineAfterSec(s.expectedIntervalSec)),
+    );
     fireAndForget(
       notify({
         kind: "resolved",
@@ -264,11 +266,13 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
     },
   });
 
+  // Each device has its own uplink interval, so each gets its own silence threshold
   const states = sensors.map((s) => ({
     sensorId: s.id,
     locationId: s.locationId,
-    offline: isSensorOffline(s.lastSeenAt, now),
+    offline: isSensorOffline(s.lastSeenAt, now, offlineAfterSec(s.expectedIntervalSec)),
   }));
+  const offlineById = new Map(states.map((s) => [s.sensorId, s.offline]));
   const downLocations = fullyOfflineLocations(states);
   const openOffline = await prisma.alert.findMany({ where: { type: "offline", resolvedAt: null } });
   const openByUnit = new Map(openOffline.map((a) => [a.unitId, a]));
@@ -282,7 +286,7 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
   const locationNotified = new Set<string>();
 
   for (const sensor of sensors) {
-    const offline = isSensorOffline(sensor.lastSeenAt, now);
+    const offline = offlineById.get(sensor.id) ?? true;
     const units = sensor.channels.map((c) => c.unit!).filter(Boolean);
     if (!units.length) continue;
 
@@ -333,7 +337,9 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
             locationName: sensor.location.name,
             unitNames: units.map((u) => u.name),
             locationWide,
-            silentMin: sensor.lastSeenAt ? minutesBetween(sensor.lastSeenAt, now) : OFFLINE_AFTER_MIN,
+            silentMin: sensor.lastSeenAt
+              ? minutesBetween(sensor.lastSeenAt, now)
+              : Math.round(offlineAfterSec(sensor.expectedIntervalSec) / 60),
           }),
         );
       }

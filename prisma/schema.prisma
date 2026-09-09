@@ -72,16 +72,26 @@ model Unit {
 }
 
 model Sensor {
-  id          String    @id @default(cuid())
-  devEui      String    @unique // uppercase hex, e.g. "A84041784362379C"
-  ttnDeviceId String? // "draginotst2"
-  locationId  String
-  location    Location  @relation(fields: [locationId], references: [id])
-  batteryV    Float?
-  batteryPct  Int?
-  lastRssi    Int?
-  lastSnr     Float?
-  lastSeenAt  DateTime? @db.Timestamptz(6)
+  id                  String    @id @default(cuid())
+  devEui              String    @unique // uppercase hex, e.g. "A84041784362379C"
+  ttnDeviceId         String? // "draginotst2"
+  /// Dragino Node_type from the decoded payload: "LTC2" (two probes) or "LHT65N" (one probe + ambient).
+  /// Updated from every uplink — the device is the source of truth.
+  nodeType            String?
+  locationId          String
+  location            Location  @relation(fields: [locationId], references: [id])
+  batteryV            Float?
+  batteryPct          Int?
+  /// Dragino Bat_status ("Good", "Low", …) — LHT65N reports it, LTC2 doesn't
+  batStatus           String?
+  lastRssi            Int?
+  lastSnr             Float?
+  /// LHT65N built-in air sensor (TempF_SHT / Hum_SHT). Not a unit reading — lives on the sensor.
+  ambientTempF        Float?
+  ambientHum          Float?
+  /// How often the device is configured to uplink. Offline threshold = 3 × interval + 60 s.
+  expectedIntervalSec Int       @default(300)
+  lastSeenAt          DateTime? @db.Timestamptz(6)
 
   channels SensorChannel[]
   readings Reading[]
@@ -135,6 +145,8 @@ model Alert {
 model UnknownUplink {
   id         Int      @id @default(autoincrement())
   devEui     String
+  /// Why it landed here: unknown_device | unsupported_node_type:<type> | unparseable
+  reason     String?
   payload    Json
   receivedAt DateTime @default(now()) @db.Timestamptz(6)
 

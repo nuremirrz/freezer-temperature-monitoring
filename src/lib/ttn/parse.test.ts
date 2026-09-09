@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { parseTtnUplink, isProbeDisconnected, cToF } from "./parse";
-import fixture from "../../../fixtures/ttn-uplink.json";
+import { parseTtnUplink, isProbeDisconnected, cToF, detectNodeType } from "./parse";
+import ltc2Fixture from "../../../fixtures/ttn-uplink.json";
+import lhtFixture from "../../../fixtures/ttn-uplink-lht65n.json";
 
 function ok(body: unknown, now?: Date) {
   const r = parseTtnUplink(body, now);
@@ -8,12 +9,14 @@ function ok(body: unknown, now?: Date) {
   return r.uplink;
 }
 
-describe("parseTtnUplink", () => {
+describe("parseTtnUplink — LTC2", () => {
   it("parses the real Dragino LTC2 fixture", () => {
-    const u = ok(fixture);
+    const u = ok(ltc2Fixture);
     expect(u.devEui).toBe("A84041784362379C");
     expect(u.deviceId).toBe("draginotst2");
     expect(u.applicationId).toBe("draginolvl-test");
+    expect(u.nodeType).toBe("LTC2");
+    expect(u.unsupportedNodeType).toBe(false);
     expect(u.fCnt).toBe(5082);
     expect(u.receivedAt.toISOString()).toBe("2026-09-09T03:24:15.863Z");
     expect(u.receivedAtFallback).toBe(false);
@@ -24,6 +27,9 @@ describe("parseTtnUplink", () => {
     expect(u.skippedChannels).toEqual([]);
     expect(u.batteryV).toBe(3.65);
     expect(u.batteryPct).toBe(100);
+    expect(u.batStatus).toBeUndefined();
+    expect(u.ambientTempF).toBeUndefined();
+    expect(u.ambientHum).toBeUndefined();
     expect(u.gateway).toEqual({
       gatewayId: "lps8n-teaneck",
       eui: "A84041FFFF29BA77",
@@ -33,13 +39,13 @@ describe("parseTtnUplink", () => {
   });
 
   it("accepts the body without the { data } wrapper", () => {
-    const u = ok((fixture as { data: unknown }).data);
+    const u = ok((ltc2Fixture as { data: unknown }).data);
     expect(u.devEui).toBe("A84041784362379C");
     expect(u.channels).toHaveLength(2);
   });
 
   it("skips a channel whose probe is not connected (327.67 °C)", () => {
-    const body = structuredClone(fixture);
+    const body = structuredClone(ltc2Fixture);
     body.data.uplink_message.decoded_payload.Temp_Channel2 = 327.67;
     body.data.uplink_message.decoded_payload.TempF_Channel2 = cToF(327.67);
     const u = ok(body);
@@ -48,7 +54,7 @@ describe("parseTtnUplink", () => {
   });
 
   it("skips the -0.01 °C placeholder too", () => {
-    const body = structuredClone(fixture);
+    const body = structuredClone(ltc2Fixture);
     body.data.uplink_message.decoded_payload.Temp_Channel1 = -0.01;
     body.data.uplink_message.decoded_payload.TempF_Channel1 = 31.98;
     const u = ok(body);
@@ -57,7 +63,7 @@ describe("parseTtnUplink", () => {
   });
 
   it("does not treat a real near-freezing reading as a placeholder when °C says otherwise", () => {
-    const body = structuredClone(fixture);
+    const body = structuredClone(ltc2Fixture);
     body.data.uplink_message.decoded_payload.Temp_Channel1 = -0.02;
     body.data.uplink_message.decoded_payload.TempF_Channel1 = 31.96;
     const u = ok(body);
@@ -68,7 +74,7 @@ describe("parseTtnUplink", () => {
     const body = {
       end_device_ids: { dev_eui: "a84041784362379c" },
       uplink_message: {
-        decoded_payload: { TempF_Channel1: 12.5 },
+        decoded_payload: { Node_type: "LTC2", TempF_Channel1: 12.5 },
         received_at: "2026-09-09T03:24:15Z",
       },
     };
@@ -86,6 +92,7 @@ describe("parseTtnUplink", () => {
       uplink_message: { decoded_payload: { Temp_Channel1: -12.2 }, received_at: "2026-09-09T03:24:15Z" },
     };
     const u = ok(body);
+    expect(u.nodeType).toBe("LTC2"); // inferred from the field names
     expect(u.channels[0].tempF).toBeCloseTo(10.04, 2);
   });
 
@@ -94,7 +101,7 @@ describe("parseTtnUplink", () => {
     const u = ok(
       {
         end_device_ids: { dev_eui: "A84041784362379C" },
-        uplink_message: { decoded_payload: { TempF_Channel1: 1 }, received_at: "not-a-date" },
+        uplink_message: { decoded_payload: { Node_type: "LTC2", TempF_Channel1: 1 }, received_at: "not-a-date" },
       },
       now,
     );
@@ -102,20 +109,133 @@ describe("parseTtnUplink", () => {
     expect(u.receivedAtFallback).toBe(true);
   });
 
-  it("handles a payload without decoded temperatures (no channels, still ok)", () => {
-    const u = ok({ end_device_ids: { dev_eui: "A84041784362379C" }, uplink_message: {} });
+  it("a known Node_type without temperatures is a heartbeat: no channels, still supported", () => {
+    const u = ok({
+      end_device_ids: { dev_eui: "A84041784362379C" },
+      uplink_message: { decoded_payload: { Node_type: "LTC2", BatV: 3.6 } },
+    });
+    expect(u.unsupportedNodeType).toBe(false);
     expect(u.channels).toEqual([]);
-    expect(u.skippedChannels).toEqual([]);
+    expect(u.batteryV).toBe(3.6);
   });
 
   it("picks the strongest gateway when several heard the uplink", () => {
-    const body = structuredClone(fixture);
+    const body = structuredClone(ltc2Fixture);
     body.data.uplink_message.rx_metadata.push({
       gateway_ids: { gateway_id: "lps8n-hackensack", eui: "A84041FFFF000001" },
       rssi: -20,
       snr: 11,
     });
     expect(ok(body).gateway?.gatewayId).toBe("lps8n-hackensack");
+  });
+});
+
+describe("parseTtnUplink — LHT65N", () => {
+  it("parses the LHT65N fixture: one probe channel plus ambient values", () => {
+    const u = ok(lhtFixture);
+    expect(u.devEui).toBe("A84041B54D625182");
+    expect(u.deviceId).toBe("draginotst");
+    expect(u.nodeType).toBe("LHT65N");
+    expect(u.unsupportedNodeType).toBe(false);
+    expect(u.receivedAt.toISOString()).toBe("2026-09-09T03:26:02.104Z"); // uplink_message.received_at wins
+    expect(u.channels).toEqual([{ channel: 1, tempF: -0.76 }]);
+    expect(u.skippedChannels).toEqual([]);
+    expect(u.ambientTempF).toBe(74.12);
+    expect(u.ambientHum).toBe(48.6);
+    expect(u.batStatus).toBe("Good");
+    expect(u.batteryV).toBe(3.02);
+    expect(u.batteryPct).toBe(94);
+    expect(u.gateway?.gatewayId).toBe("lps8n-teaneck");
+  });
+
+  it("never produces a channel 2 for LHT65N", () => {
+    const body = structuredClone(lhtFixture);
+    // even if a stray LTC2-style field appears, the LHT65N branch ignores it
+    (body.uplink_message.decoded_payload as Record<string, unknown>).TempF_Channel2 = 40;
+    const u = ok(body);
+    expect(u.channels.map((c) => c.channel)).toEqual([1]);
+  });
+
+  it("skips a disconnected external probe but still reports ambient values", () => {
+    const body = structuredClone(lhtFixture);
+    body.uplink_message.decoded_payload.TempC_TMP117 = 327.67;
+    body.uplink_message.decoded_payload.TempF_TMP117 = cToF(327.67);
+    const u = ok(body);
+    expect(u.channels).toEqual([]);
+    expect(u.skippedChannels).toEqual([1]);
+    expect(u.ambientTempF).toBe(74.12);
+    expect(u.ambientHum).toBe(48.6);
+  });
+
+  it("treats the -0.01 °C sentinel on TMP117 as disconnected", () => {
+    const body = structuredClone(lhtFixture);
+    body.uplink_message.decoded_payload.TempC_TMP117 = -0.01;
+    body.uplink_message.decoded_payload.TempF_TMP117 = 31.98;
+    expect(ok(body).skippedChannels).toEqual([1]);
+  });
+
+  it("converts Celsius when only TempC_TMP117 / TempC_SHT are present", () => {
+    const u = ok({
+      end_device_ids: { dev_eui: "A84041B54D625182" },
+      uplink_message: {
+        decoded_payload: { Node_type: "LHT65N", TempC_TMP117: -20, TempC_SHT: 21, Hum_SHT: 50 },
+        received_at: "2026-09-09T03:26:02Z",
+      },
+    });
+    expect(u.channels[0].tempF).toBeCloseTo(-4, 5);
+    expect(u.ambientTempF).toBeCloseTo(69.8, 5);
+    expect(u.ambientHum).toBe(50);
+  });
+
+  it("infers LHT65N when Node_type is missing but TMP117/SHT fields are present", () => {
+    const u = ok({
+      end_device_ids: { dev_eui: "A84041B54D625182" },
+      uplink_message: { decoded_payload: { TempF_TMP117: 3.2, Hum_SHT: 40 } },
+    });
+    expect(u.nodeType).toBe("LHT65N");
+    expect(u.channels).toEqual([{ channel: 1, tempF: 3.2 }]);
+  });
+
+  it("works without the ambient sensor fields", () => {
+    const u = ok({
+      end_device_ids: { dev_eui: "A84041B54D625182" },
+      uplink_message: { decoded_payload: { Node_type: "LHT65N", TempF_TMP117: 5 } },
+    });
+    expect(u.channels).toEqual([{ channel: 1, tempF: 5 }]);
+    expect(u.ambientTempF).toBeUndefined();
+    expect(u.ambientHum).toBeUndefined();
+  });
+
+  it("normalizes Node_type case and whitespace", () => {
+    const u = ok({
+      end_device_ids: { dev_eui: "A84041B54D625182" },
+      uplink_message: { decoded_payload: { Node_type: " lht65n ", TempF_TMP117: 5 } },
+    });
+    expect(u.nodeType).toBe("LHT65N");
+    expect(u.unsupportedNodeType).toBe(false);
+  });
+});
+
+describe("parseTtnUplink — unknown Node_type", () => {
+  it("parses but marks the uplink unsupported and yields no channels", () => {
+    const u = ok({
+      end_device_ids: { dev_eui: "A8404113CA625184" },
+      uplink_message: {
+        decoded_payload: { Node_type: "LSN50v2", Temp1: 12.3, BatV: 3.4 },
+        received_at: "2026-09-09T03:30:00Z",
+      },
+    });
+    expect(u.nodeType).toBe("LSN50V2");
+    expect(u.unsupportedNodeType).toBe(true);
+    expect(u.channels).toEqual([]);
+    expect(u.batteryV).toBe(3.4); // heartbeat data is still usable
+  });
+
+  it("is unsupported when there is no Node_type and nothing to infer from", () => {
+    const u = ok({ end_device_ids: { dev_eui: "A84041784362379C" }, uplink_message: {} });
+    expect(u.nodeType).toBeUndefined();
+    expect(u.unsupportedNodeType).toBe(true);
+    expect(u.channels).toEqual([]);
   });
 
   it("rejects a body without dev_eui", () => {
@@ -127,6 +247,18 @@ describe("parseTtnUplink", () => {
   it("rejects non-object bodies", () => {
     expect(parseTtnUplink("nope").ok).toBe(false);
     expect(parseTtnUplink(null).ok).toBe(false);
+  });
+});
+
+describe("detectNodeType", () => {
+  it("prefers the declared Node_type", () => {
+    expect(detectNodeType({ Node_type: "LTC2", TempF_TMP117: 1 })).toBe("LTC2");
+  });
+  it("infers from field names", () => {
+    expect(detectNodeType({ TempF_Channel2: 1 })).toBe("LTC2");
+    expect(detectNodeType({ Hum_SHT: 40 })).toBe("LHT65N");
+    expect(detectNodeType({ BatV: 3 })).toBeUndefined();
+    expect(detectNodeType(undefined)).toBeUndefined();
   });
 });
 

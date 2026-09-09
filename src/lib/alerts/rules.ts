@@ -7,8 +7,8 @@
 export const CONSECUTIVE_OUT_OF_RANGE = 2;
 /** Alert closes only once the reading is back inside the range by this margin. */
 export const HYSTERESIS_F = 2;
-/** A sensor that has been silent this long is offline (3 missed 5-minute uplinks + slack). */
-export const OFFLINE_AFTER_MIN = 16;
+/** Uplink interval Dragino devices ship with; each Sensor row can override it. */
+export const DEFAULT_EXPECTED_INTERVAL_SEC = 300;
 /** Never notify about the same alert more often than this. */
 export const NOTIFY_COOLDOWN_MIN = 30;
 
@@ -88,13 +88,21 @@ export function evaluateTempReading(e: TempEvaluation): TempDecision {
   return { action: "none" };
 }
 
+/**
+ * Offline threshold for a sensor: three missed uplinks plus a minute of slack.
+ * 300 s → 960 s (16 min), 120 s → 420 s (7 min).
+ */
+export function offlineAfterSec(expectedIntervalSec: number = DEFAULT_EXPECTED_INTERVAL_SEC): number {
+  return 3 * expectedIntervalSec + 60;
+}
+
 export function isSensorOffline(
   lastSeenAt: Date | null,
   now: Date,
-  thresholdMin: number = OFFLINE_AFTER_MIN,
+  thresholdSec: number = offlineAfterSec(),
 ): boolean {
   if (!lastSeenAt) return true;
-  return now.getTime() - lastSeenAt.getTime() > thresholdMin * 60_000;
+  return now.getTime() - lastSeenAt.getTime() > thresholdSec * 1000;
 }
 
 /** Whether a notification may be sent for an alert given when it was last notified. */
