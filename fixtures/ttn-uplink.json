@@ -1,0 +1,29 @@
+{
+  "data": {
+    "end_device_ids": {
+      "device_id": "draginotst2",
+      "dev_eui": "A84041784362379C",
+      "application_ids": { "application_id": "draginolvl-test" }
+    },
+    "uplink_message": {
+      "f_cnt": 5082,
+      "decoded_payload": {
+        "BatV": 3.65,
+        "Node_type": "LTC2",
+        "TempF_Channel1": 76.05,
+        "TempF_Channel2": 61.29,
+        "Temp_Channel1": 24.47,
+        "Temp_Channel2": 16.27
+      },
+      "rx_metadata": [
+        {
+          "gateway_ids": { "gateway_id": "lps8n-teaneck", "eui": "A84041FFFF29BA77" },
+          "rssi": -34,
+          "snr": 9.8
+        }
+      ],
+      "received_at": "2026-09-09T03:24:15.863434532Z",
+      "last_battery_percentage": { "value": 100 }
+    }
+  }
+}

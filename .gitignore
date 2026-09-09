@@ -43,3 +43,9 @@ next-env.d.ts
 # local project materials
 /info
 .DS_Store
+
+# Prisma generated client (rebuilt by `prisma generate` on install)
+/src/generated/
+
+# keep the env template
+!.env.example

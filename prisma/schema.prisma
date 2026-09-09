@@ -1,0 +1,142 @@
+// Qimby pilot backend — PostgreSQL via Prisma 7 (driver adapter: @prisma/adapter-pg).
+// All timestamps are stored as timestamptz (UTC); the UI renders them in the location's timezone.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UnitType {
+  freezer
+  walk_in_freezer
+  walk_in_cooler
+  ac
+}
+
+enum AlertType {
+  temp_out_of_range
+  offline
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String   @unique // "Burger King #1025"
+  address   String
+  city      String
+  state     String
+  zip       String
+  lat       Float
+  lng       Float
+  timezone  String   @default("America/New_York")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  gateways Gateway[]
+  units    Unit[]
+  sensors  Sensor[]
+}
+
+model Gateway {
+  id           String    @id @default(cuid())
+  ttnGatewayId String    @unique // "lps8n-teaneck"
+  eui          String?   @unique
+  locationId   String
+  location     Location  @relation(fields: [locationId], references: [id])
+  lastSeenAt   DateTime? @db.Timestamptz(6)
+
+  @@index([locationId])
+}
+
+model Unit {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  type       UnitType
+  name       String // "Freezer - Back"
+  model      String?
+  serial     String?
+  year       Int?
+  // Normal range per unit; defaults come from the type, but can be overridden
+  rangeMinF  Float
+  rangeMaxF  Float
+
+  channels SensorChannel[]
+  readings Reading[]
+  alerts   Alert[]
+
+  @@unique([locationId, name])
+  @@index([locationId])
+}
+
+model Sensor {
+  id          String    @id @default(cuid())
+  devEui      String    @unique // uppercase hex, e.g. "A84041784362379C"
+  ttnDeviceId String? // "draginotst2"
+  locationId  String
+  location    Location  @relation(fields: [locationId], references: [id])
+  batteryV    Float?
+  batteryPct  Int?
+  lastRssi    Int?
+  lastSnr     Float?
+  lastSeenAt  DateTime? @db.Timestamptz(6)
+
+  channels SensorChannel[]
+  readings Reading[]
+
+  @@index([locationId])
+}
+
+/// One Dragino LTC2 has two probes; each probe (channel 1|2) may be wired to a unit or left unconnected.
+model SensorChannel {
+  id       String  @id @default(cuid())
+  sensorId String
+  sensor   Sensor  @relation(fields: [sensorId], references: [id])
+  channel  Int // 1 | 2
+  unitId   String?
+  unit     Unit?   @relation(fields: [unitId], references: [id])
+
+  @@unique([sensorId, channel])
+  @@index([unitId])
+}
+
+model Reading {
+  id         Int      @id @default(autoincrement())
+  unitId     String
+  unit       Unit     @relation(fields: [unitId], references: [id])
+  sensorId   String
+  sensor     Sensor   @relation(fields: [sensorId], references: [id])
+  channel    Int
+  tempF      Float
+  measuredAt DateTime @db.Timestamptz(6) // uplink_message.received_at
+
+  // TTN may deliver the same uplink twice — the same probe can't measure twice at the same instant
+  @@unique([sensorId, channel, measuredAt])
+  @@index([unitId, measuredAt(sort: Desc)])
+}
+
+model Alert {
+  id             String    @id @default(cuid())
+  unitId         String
+  unit           Unit      @relation(fields: [unitId], references: [id])
+  type           AlertType
+  openedAt       DateTime  @default(now()) @db.Timestamptz(6)
+  resolvedAt     DateTime? @db.Timestamptz(6)
+  peakTempF      Float?
+  lastNotifiedAt DateTime? @db.Timestamptz(6)
+
+  @@index([unitId, resolvedAt])
+  @@index([resolvedAt])
+}
+
+/// Uplinks from dev_eui we don't know yet. Nothing is dropped silently — handy when wiring new sensors.
+model UnknownUplink {
+  id         Int      @id @default(autoincrement())
+  devEui     String
+  payload    Json
+  receivedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([devEui])
+}
