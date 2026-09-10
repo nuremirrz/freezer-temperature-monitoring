@@ -153,7 +153,39 @@ In the TTN console: **Applications → your app → Integrations → Webhooks �
 
 TTN does not retry failed deliveries and there is no buffering when a restaurant loses internet — gaps in the data are expected and allowed.
 
-### Deploying to Railway
+### Deploying to Render + Neon (free tier)
+
+The pilot runs as one always-on Node process with an external Postgres.
+
+**1. Database — [Neon](https://neon.tech).** Sign up (GitHub works, no card), create a project. In **Connection Details** pick **Direct connection**, not the pooled one: `prisma migrate deploy` needs a real session, and PgBouncer in transaction mode breaks it. Copy the string, it looks like `postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require`.
+
+**2. App — [Render](https://render.com).** New → **Blueprint**, point it at this repository. `render.yaml` describes the service: `npm ci && npm run build`, then `prisma migrate deploy && next start`, health check on `/api/health`.
+
+**3. Environment variables** in the Render dashboard (they are `sync: false` in the blueprint, so they never land in git):
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | the Neon direct connection string |
+| `TTN_WEBHOOK_SECRET` | a long random string, the same one goes into the TTN webhook header |
+| `APP_URL` | the Render URL, e.g. `https://qimby.onrender.com` |
+| `SMTP_URL`, `MAIL_FROM` | optional, for confirmation and reset e-mails |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | optional, for alert notifications |
+
+Generate the secret with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
+
+**4. Seed once** after the first successful deploy: open **Shell** on the service and run `npm run db:seed`. Add `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` first to get a verified login without configuring SMTP.
+
+**5. Point the TTN webhook** at `https://<your-render-url>` (see below).
+
+Two things to know about the free tiers:
+
+- **Render sleeps a free service after 15 minutes without inbound HTTP**, and waking it takes around a minute. Sensor uplinks every 2–5 minutes keep it awake on their own, but *before* the hardware is wired the service will nap, and the first uplink after a nap can be lost — TTN does not retry. A free uptime pinger (UptimeRobot and friends) hitting `/api/health` every 5 minutes removes the problem entirely.
+- **Neon suspends the compute after 5 minutes of inactivity.** Waking takes well under a second, and regular uplinks keep it warm; nothing to do here.
+
+Neither limitation affects data already stored, and both disappear on any paid tier.
+
+### Deploying to Railway (alternative)
+
 
 1. **New project → Deploy from GitHub repo** (this repository, branch `main`). Nixpacks detects Next.js; `npm run build` runs `prisma generate` via `postinstall`.
 2. **+ New → Database → PostgreSQL.** In the app service add the variable `DATABASE_URL = ${{Postgres.DATABASE_URL}}`.

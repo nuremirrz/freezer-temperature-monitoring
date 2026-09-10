@@ -1,0 +1,32 @@
+# Render blueprint — one always-on web service.
+# The database is external (Neon free tier); set DATABASE_URL in the dashboard.
+services:
+  - type: web
+    name: qimby
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm ci && npm run build
+    # Migrations run on every deploy, before the server starts
+    startCommand: npx prisma migrate deploy && npm run start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22.18.0
+      # Set these in the Render dashboard (marked sync:false so they are never committed)
+      - key: DATABASE_URL
+        sync: false
+      - key: TTN_WEBHOOK_SECRET
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: SMTP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
