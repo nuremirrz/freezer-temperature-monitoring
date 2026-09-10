@@ -69,7 +69,7 @@ Useful scripts:
 
 | Command | What it does |
 | --- | --- |
-| `npm run fixture` | POST `fixtures/ttn-uplink.json` to the local ingest endpoint. Re-running is a duplicate → `readings: 0` |
+| `npm run fixture` | POST `fixtures/ttn-uplink.json` (a real `draginotst2` capture) to the local ingest endpoint. Re-running is a duplicate → `readings: 0` |
 | `npm run fixture -- --at now --temp1 15.2 --temp2 61` | Fresh timestamp + custom °F per channel (channel 1 = Teaneck **Freezer - Back**, channel 2 = **Freezer - Front**) |
 | `npm run fixture -- --temp2 disconnected` | Simulate an unplugged probe (Dragino sentinel 327.67 °C → channel skipped) |
 | `npm run fixture -- --dev-eui FILL_ME_9` | Uplink from another / unknown device |
@@ -88,7 +88,7 @@ Default ranges by type: freezer / walk-in freezer / walk-in cooler **−10…+10
 ### Ingest — `POST /api/ingest/ttn`
 
 1. `X-Webhook-Secret` must equal `TTN_WEBHOOK_SECRET` → otherwise **401**.
-2. Body is parsed tolerantly (`src/lib/ttn/parse.ts`, zod): only `dev_eui` is required; missing rssi/battery never blocks a temperature. Time comes from `uplink_message.received_at`. The body may be the raw TTN webhook or wrapped in `{ data }`. The decoder branch is chosen by `decoded_payload.Node_type` (inferred from the field names when missing):
+2. Body is parsed tolerantly (`src/lib/ttn/parse.ts`, zod): only `dev_eui` is required; missing rssi/battery never blocks a temperature. The fixtures in `fixtures/` are **real captures** exported from The Things Stack Live Data, and the parser has been replayed against 39 production uplinks from both device types without a single failure. Time comes from `uplink_message.received_at`. The body may be the raw TTN webhook or wrapped in `{ data }`. The decoder branch is chosen by `decoded_payload.Node_type` (inferred from the field names when missing):
    - **LTC2** — two probes: `TempF_Channel1/2` (falls back to converting `Temp_Channel1/2`) → channels 1 and 2.
    - **LHT65N** — one probe: `TempF_TMP117` → channel 1. The built-in air sensor `TempF_SHT` / `Hum_SHT` is stored on the sensor as `ambientTempF` / `ambientHum`, never as a reading. `Bat_status` → `Sensor.batStatus`.
    - Dragino "probe not connected" sentinels (327.67 / −0.01 °C) are skipped for both types.

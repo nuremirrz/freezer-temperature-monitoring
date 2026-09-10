@@ -1,30 +1,82 @@
 {
+  "@type": "type.googleapis.com/ttn.lorawan.v3.ApplicationUp",
   "end_device_ids": {
     "device_id": "draginotst",
+    "application_ids": {
+      "application_id": "draginolvl-test"
+    },
     "dev_eui": "A84041B54D625182",
-    "application_ids": { "application_id": "draginolvl-test" }
+    "join_eui": "A840410000000100",
+    "dev_addr": "260C7CD2"
   },
-  "received_at": "2026-09-09T03:26:02.118Z",
+  "correlation_ids": [
+    "gs:uplink:01M257W5BQNW22QFGB79PBBKRM"
+  ],
+  "received_at": "2026-09-10T08:45:14.183680628Z",
   "uplink_message": {
-    "f_cnt": 1201,
+    "session_key_id": "AaBeYEoxt7FtJF3Q7ZBQOw==",
+    "f_port": 2,
+    "f_cnt": 6170,
+    "frm_payload": "y/sJggK9Agl/f/8=",
     "decoded_payload": {
-      "BatV": 3.02,
+      "BatV": 3.067,
       "Bat_status": "Good",
+      "Ext_sensor": "Temperature Sensor",
+      "Hum_SHT": 70.1,
       "Node_type": "LHT65N",
-      "Hum_SHT": 48.6,
-      "TempC_SHT": 23.4,
-      "TempF_SHT": 74.12,
-      "TempC_TMP117": -18.2,
-      "TempF_TMP117": -0.76
+      "TempC_SHT": 24.34,
+      "TempC_TMP117": 24.31,
+      "TempF_SHT": 75.81,
+      "TempF_TMP117": 75.76
     },
     "rx_metadata": [
       {
-        "gateway_ids": { "gateway_id": "lps8n-teaneck", "eui": "A84041FFFF29BA77" },
-        "rssi": -41,
-        "snr": 8.5
+        "gateway_ids": {
+          "gateway_id": "lps8n-teaneck",
+          "eui": "A84041FFFF29BA77"
+        },
+        "time": "2026-09-10T08:45:13.933407Z",
+        "timestamp": 3424283713,
+        "rssi": -19,
+        "channel_rssi": -19,
+        "snr": 14,
+        "frequency_offset": "-524",
+        "channel_index": 4,
+        "received_at": "2026-09-10T08:45:13.939907066Z"
       }
     ],
-    "received_at": "2026-09-09T03:26:02.104911204Z",
-    "last_battery_percentage": { "value": 94 }
+    "settings": {
+      "data_rate": {
+        "lora": {
+          "bandwidth": 125000,
+          "spreading_factor": 7,
+          "coding_rate": "4/5"
+        }
+      },
+      "frequency": "904700000",
+      "timestamp": 3424283713,
+      "time": "2026-09-10T08:45:13.933407Z"
+    },
+    "received_at": "2026-09-10T08:45:13.976796411Z",
+    "consumed_airtime": "0.061696s",
+    "locations": {
+      "user": {
+        "latitude": 40.91168323497517,
+        "longitude": -74.00236129760744,
+        "source": "SOURCE_REGISTRY"
+      }
+    },
+    "network_ids": {
+      "net_id": "000013",
+      "ns_id": "EC656E0000000182",
+      "tenant_id": "ttn",
+      "cluster_id": "nam1",
+      "cluster_address": "nam1.cloud.thethings.network"
+    },
+    "last_battery_percentage": {
+      "f_cnt": 6066,
+      "value": 100,
+      "received_at": "2026-09-10T05:17:16.189554549Z"
+    }
   }
 }

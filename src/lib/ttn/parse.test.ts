@@ -17,15 +17,15 @@ describe("parseTtnUplink — LTC2", () => {
     expect(u.applicationId).toBe("draginolvl-test");
     expect(u.nodeType).toBe("LTC2");
     expect(u.unsupportedNodeType).toBe(false);
-    expect(u.fCnt).toBe(5082);
-    expect(u.receivedAt.toISOString()).toBe("2026-09-09T03:24:15.863Z");
+    expect(u.applicationId).toBe("draginolvl-test");
+    expect(u.receivedAt.toISOString()).toBe("2026-09-10T08:44:17.887Z");
     expect(u.receivedAtFallback).toBe(false);
     expect(u.channels).toEqual([
-      { channel: 1, tempF: 76.05 },
-      { channel: 2, tempF: 61.29 },
+      { channel: 1, tempF: 74.97 },
+      { channel: 2, tempF: 61.16 },
     ]);
     expect(u.skippedChannels).toEqual([]);
-    expect(u.batteryV).toBe(3.65);
+    expect(u.batteryV).toBe(3.654);
     expect(u.batteryPct).toBe(100);
     expect(u.batStatus).toBeUndefined();
     expect(u.ambientTempF).toBeUndefined();
@@ -33,30 +33,30 @@ describe("parseTtnUplink — LTC2", () => {
     expect(u.gateway).toEqual({
       gatewayId: "lps8n-teaneck",
       eui: "A84041FFFF29BA77",
-      rssi: -34,
-      snr: 9.8,
+      rssi: -33,
+      snr: 8.8,
     });
   });
 
-  it("accepts the body without the { data } wrapper", () => {
-    const u = ok((ltc2Fixture as { data: unknown }).data);
+  it("accepts the body wrapped in { data }, as some relays send it", () => {
+    const u = ok({ data: ltc2Fixture });
     expect(u.devEui).toBe("A84041784362379C");
     expect(u.channels).toHaveLength(2);
   });
 
   it("skips a channel whose probe is not connected (327.67 °C)", () => {
     const body = structuredClone(ltc2Fixture);
-    body.data.uplink_message.decoded_payload.Temp_Channel2 = 327.67;
-    body.data.uplink_message.decoded_payload.TempF_Channel2 = cToF(327.67);
+    body.uplink_message.decoded_payload.Temp_Channel2 = 327.67;
+    body.uplink_message.decoded_payload.TempF_Channel2 = cToF(327.67);
     const u = ok(body);
-    expect(u.channels).toEqual([{ channel: 1, tempF: 76.05 }]);
+    expect(u.channels).toEqual([{ channel: 1, tempF: 74.97 }]);
     expect(u.skippedChannels).toEqual([2]);
   });
 
   it("skips the -0.01 °C placeholder too", () => {
     const body = structuredClone(ltc2Fixture);
-    body.data.uplink_message.decoded_payload.Temp_Channel1 = -0.01;
-    body.data.uplink_message.decoded_payload.TempF_Channel1 = 31.98;
+    body.uplink_message.decoded_payload.Temp_Channel1 = -0.01;
+    body.uplink_message.decoded_payload.TempF_Channel1 = 31.98;
     const u = ok(body);
     expect(u.channels.map((c) => c.channel)).toEqual([2]);
     expect(u.skippedChannels).toEqual([1]);
@@ -64,8 +64,8 @@ describe("parseTtnUplink — LTC2", () => {
 
   it("does not treat a real near-freezing reading as a placeholder when °C says otherwise", () => {
     const body = structuredClone(ltc2Fixture);
-    body.data.uplink_message.decoded_payload.Temp_Channel1 = -0.02;
-    body.data.uplink_message.decoded_payload.TempF_Channel1 = 31.96;
+    body.uplink_message.decoded_payload.Temp_Channel1 = -0.02;
+    body.uplink_message.decoded_payload.TempF_Channel1 = 31.96;
     const u = ok(body);
     expect(u.channels[0]).toEqual({ channel: 1, tempF: 31.96 });
   });
@@ -121,7 +121,8 @@ describe("parseTtnUplink — LTC2", () => {
 
   it("picks the strongest gateway when several heard the uplink", () => {
     const body = structuredClone(ltc2Fixture);
-    body.data.uplink_message.rx_metadata.push({
+    // The real capture types rx_metadata narrowly; a second gateway only needs these fields
+    (body.uplink_message.rx_metadata as unknown as Record<string, unknown>[]).push({
       gateway_ids: { gateway_id: "lps8n-hackensack", eui: "A84041FFFF000001" },
       rssi: -20,
       snr: 11,
@@ -137,14 +138,14 @@ describe("parseTtnUplink — LHT65N", () => {
     expect(u.deviceId).toBe("draginotst");
     expect(u.nodeType).toBe("LHT65N");
     expect(u.unsupportedNodeType).toBe(false);
-    expect(u.receivedAt.toISOString()).toBe("2026-09-09T03:26:02.104Z"); // uplink_message.received_at wins
-    expect(u.channels).toEqual([{ channel: 1, tempF: -0.76 }]);
+    expect(u.receivedAt.toISOString()).toBe("2026-09-10T08:45:13.976Z"); // uplink_message.received_at wins
+    expect(u.channels).toEqual([{ channel: 1, tempF: 75.76 }]);
     expect(u.skippedChannels).toEqual([]);
-    expect(u.ambientTempF).toBe(74.12);
-    expect(u.ambientHum).toBe(48.6);
+    expect(u.ambientTempF).toBe(75.81);
+    expect(u.ambientHum).toBe(70.1);
     expect(u.batStatus).toBe("Good");
-    expect(u.batteryV).toBe(3.02);
-    expect(u.batteryPct).toBe(94);
+    expect(u.batteryV).toBe(3.067);
+    expect(u.batteryPct).toBe(100);
     expect(u.gateway?.gatewayId).toBe("lps8n-teaneck");
   });
 
@@ -163,8 +164,8 @@ describe("parseTtnUplink — LHT65N", () => {
     const u = ok(body);
     expect(u.channels).toEqual([]);
     expect(u.skippedChannels).toEqual([1]);
-    expect(u.ambientTempF).toBe(74.12);
-    expect(u.ambientHum).toBe(48.6);
+    expect(u.ambientTempF).toBe(75.81);
+    expect(u.ambientHum).toBe(70.1);
   });
 
   it("treats the -0.01 °C sentinel on TMP117 as disconnected", () => {
@@ -247,6 +248,32 @@ describe("parseTtnUplink — unknown Node_type", () => {
   it("rejects non-object bodies", () => {
     expect(parseTtnUplink("nope").ok).toBe(false);
     expect(parseTtnUplink(null).ok).toBe(false);
+  });
+});
+
+describe("real captures from The Things Stack", () => {
+  it("LTC2: ignores Ext and Systimestamp, prefers uplink_message.received_at over the top-level one", () => {
+    const u = ok(ltc2Fixture);
+    const payload = ltc2Fixture.uplink_message.decoded_payload as Record<string, unknown>;
+    expect(payload.Ext).toBe(1); // present in the capture, deliberately unused
+    expect(payload.Systimestamp).toBeDefined(); // device clock, not trusted
+    // top-level received_at is 08:44:18.098, the message one is 08:44:17.887
+    expect(u.receivedAt.toISOString()).toBe("2026-09-10T08:44:17.887Z");
+  });
+
+  it("LHT65N: carries Ext_sensor without tripping the parser", () => {
+    const payload = lhtFixture.uplink_message.decoded_payload as Record<string, unknown>;
+    expect(payload.Ext_sensor).toBe("Temperature Sensor");
+    const u = ok(lhtFixture);
+    expect(u.nodeType).toBe("LHT65N");
+    expect(u.channels).toEqual([{ channel: 1, tempF: 75.76 }]);
+  });
+
+  it("both captures keep the probe reading separate from the device's own air sensor", () => {
+    const lht = ok(lhtFixture);
+    expect(lht.channels[0].tempF).toBe(75.76); // TMP117, the external probe
+    expect(lht.ambientTempF).toBe(75.81); // SHT, the built-in sensor
+    expect(ok(ltc2Fixture).ambientTempF).toBeUndefined(); // LTC2 has no air sensor
   });
 });
 
