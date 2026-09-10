@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
+import { unauthorized } from "@/lib/auth/http";
 import { deriveUnitStatus, deriveLocationStatus } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +14,7 @@ interface LatestRow {
 
 /** GET /api/locations/[id] — location + units with last reading, status and active alert. */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!(await getSession())) return unauthorized();
   const { id } = await ctx.params;
 
   const loc = await prisma.location.findUnique({

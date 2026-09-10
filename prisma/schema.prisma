@@ -22,6 +22,59 @@ enum AlertType {
   offline
 }
 
+enum UserRole {
+  admin
+}
+
+enum AuthTokenType {
+  email_verify
+  password_reset
+}
+
+/// Application accounts. Passwords are stored as scrypt hashes only — the plaintext never
+/// touches the database or the logs. Sensor data has no relation to users, so deleting an
+/// account never deletes readings.
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique // stored lowercase
+  name            String?
+  passwordHash    String
+  role            UserRole  @default(admin)
+  emailVerifiedAt DateTime? @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+
+  sessions Session[]
+  tokens   AuthToken[]
+}
+
+/// Server-side sessions. `id` is the sha256 of the cookie value, so a database leak can't be replayed.
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  userAgent String?
+  ip        String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Single-use e-mail tokens (verification, password reset). `id` is the sha256 of the raw token.
+model AuthToken {
+  id        String        @id
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      AuthTokenType
+  expiresAt DateTime      @db.Timestamptz(6)
+  usedAt    DateTime?     @db.Timestamptz(6)
+  createdAt DateTime      @default(now()) @db.Timestamptz(6)
+
+  @@index([userId, type])
+}
+
 model Location {
   id        String   @id @default(cuid())
   name      String   @unique // "Burger King #1025"

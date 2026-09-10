@@ -1,21 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const AUTH_COOKIE = "ftm_auth";
+const SESSION_COOKIE = "qimby_session";
+/** Reachable without a session */
+const AUTH_PAGES = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
+/** Pointless while signed in */
+const GUEST_ONLY = new Set(["/login", "/register"]);
 
+/**
+ * Fast cookie-presence gate. The real check (session exists, not expired) happens in the
+ * (app) layout and in every protected API route — this only saves an unauthenticated
+ * visitor a round-trip.
+ */
 export function proxy(req: NextRequest) {
-  const authed = req.cookies.get(AUTH_COOKIE)?.value === "1";
+  const hasCookie = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
   const { pathname } = req.nextUrl;
-  const isAuthPage = pathname === "/login" || pathname === "/register";
 
-  if (!authed && !isAuthPage) {
-    return NextResponse.redirect(new URL("/login", req.url));
+  if (!hasCookie && !AUTH_PAGES.has(pathname)) {
+    const login = new URL("/login", req.url);
+    if (pathname !== "/") login.searchParams.set("next", pathname);
+    return NextResponse.redirect(login);
   }
-  if (authed && isAuthPage) {
+  if (hasCookie && GUEST_ONLY.has(pathname)) {
     return NextResponse.redirect(new URL("/locations", req.url));
   }
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/", "/locations/:path*", "/maintenance/:path*", "/login", "/register"],
+  matcher: [
+    "/",
+    "/locations/:path*",
+    "/maintenance/:path*",
+    "/settings",
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+  ],
 };

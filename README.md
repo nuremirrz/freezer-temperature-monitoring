@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 — you will be redirected to `/login`. Enter any valid-looking email and any password (auth is mocked with a cookie flag).
+Open http://localhost:3000 — you will be redirected to `/login`. Create an account (the confirmation link is printed to the server console when no SMTP is configured, and shown on the page in development) or seed a verified admin with `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` — see **Accounts & sign-in** below.
 
 New here? [GUIDE.md](GUIDE.md) walks through every screen and includes a two-minute demo script (in Russian).
 
@@ -17,7 +17,7 @@ New here? [GUIDE.md](GUIDE.md) walks through every screen and includes a two-min
 
 | Screen | Route | Notes |
 | --- | --- | --- |
-| Sign in / Create account | `/login`, `/register` | Mock auth, client-side validation, Google/SSO are demo stubs |
+| Sign in / Create account | `/login`, `/register` | Real accounts: e-mail confirmation, password reset, account deletion (see below). Google/SSO are demo stubs |
 | Locations | `/locations` | 25 locations (3 alert / 2 offline / 20 normal), summary cards, Alerts-first & Name sorting, Leaflet map with status markers + legend |
 | Location units | `/locations/[id]` | Overall status card, live outdoor weather (Open-Meteo), equipment tabs, units table with live temperatures & alert durations |
 | Unit detail | `/locations/[id]/units/[unitId]` | Overview card (model / serial / year / image), Current State tiles, 24H / 7D / 30D chart with threshold line, Service History (PM visits, repairs, installation) |
@@ -38,7 +38,7 @@ Next.js (App Router) · TypeScript · Tailwind CSS · zustand · recharts · rea
 ## Notes
 
 - Mock data lives in `src/data/` (locations, units, history generator, weather helper).
-- Route protection is handled by `src/proxy.ts` (Next 16 middleware): no auth cookie → redirect to `/login`.
+- Route protection: `src/proxy.ts` (Next 16 proxy) redirects visitors without a session cookie; the `(app)` layout and every read API validate the session against the database.
 - Unit images are placeholder SVGs in `public/units/` — swap for real photos any time.
 
 ---
@@ -116,6 +116,31 @@ Example: `🔴 BK #1025 · Freezer - Back: 15.2°F (норма −10…10°F), 2
 
 The SSE bus is in-process; the pilot runs as a single Node process. Multi-instance would need Redis / `pg NOTIFY`.
 
+### Accounts & sign-in
+
+Real accounts, implemented in `src/lib/auth` and `src/app/api/auth/*` (no third-party auth service):
+
+| Flow | Endpoint | Notes |
+| --- | --- | --- |
+| Register | `POST /api/auth/register` | Creates an **unverified** account and e-mails a confirmation link (24 h). The response is identical whether or not the e-mail is taken |
+| Confirm e-mail | `GET /api/auth/verify?token=…` | Single-use; redirects to `/login?verified=1` |
+| Sign in / out | `POST /api/auth/login`, `POST /api/auth/logout[?all=1]` | Unverified accounts get `403 email_not_verified`; "Remember me" = 30-day session, otherwise 1 day |
+| Forgot / reset password | `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` | Reset link is valid 1 h and signs the user out everywhere; it also counts as e-mail confirmation |
+| Who am I | `GET /api/auth/me` | |
+| Delete account | `DELETE /api/auth/account` `{password}` | Removes the login only — readings, alerts, sensors and units are not related to users and stay |
+
+Security notes, matching the task requirements:
+
+- **Passwords are never stored or logged in plaintext.** They are hashed with Node's built-in `scrypt` (`scrypt$N$r$p$salt$hash`, `src/lib/auth/password.ts`). Nobody on the team can read a user's password from the database.
+- Sessions live in the `Session` table; the cookie holds a random token whose **sha256** is the row id (`httpOnly`, `SameSite=Lax`, `Secure` in production). Confirmation / reset tokens are stored the same way and are single-use.
+- Every new account gets **role `admin`** (`User.role`, enum `UserRole`) — roles will be split later; the column is already there.
+- Auth endpoints are rate-limited per IP and reject cross-site `Origin`s. Login timing is the same for unknown e-mails and wrong passwords.
+- `/api/locations`, `/api/locations/[id]`, `/api/units/[id]/readings` and `/api/stream` require a session (`401` otherwise). `/api/health` stays public for uptime checks; `/api/ingest/ttn` uses the webhook secret.
+
+**E-mail.** Confirmation and reset messages go out through `SMTP_URL` (`smtp://user:pass@host:587`, `MAIL_FROM`). The SMTP provider is a third-party service that will receive user e-mail addresses — per the task, its choice must be agreed as *sensitive data* before it is configured. Until then the app runs in **console mode**: links are printed to the server log and, in development, returned to the page. `APP_URL` sets the public origin used in links (defaults to the request origin).
+
+**First admin without e-mail.** Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` and run `npm run db:seed` — creates a verified admin (intended for local / demo environments).
+
 ### Configuring the TTN webhook
 
 In the TTN console: **Applications → your app → Integrations → Webhooks → + Add webhook → Custom webhook**.
@@ -127,6 +152,17 @@ In the TTN console: **Applications → your app → Integrations → Webhooks �
 - **Enabled event types**: tick **Uplink message** only, path `/api/ingest/ttn`
 
 TTN does not retry failed deliveries and there is no buffering when a restaurant loses internet — gaps in the data are expected and allowed.
+
+### Deploying to Railway
+
+1. **New project → Deploy from GitHub repo** (this repository, branch `main`). Nixpacks detects Next.js; `npm run build` runs `prisma generate` via `postinstall`.
+2. **+ New → Database → PostgreSQL.** In the app service add the variable `DATABASE_URL = ${{Postgres.DATABASE_URL}}`.
+3. Add the rest of the variables: `TTN_WEBHOOK_SECRET` (long random string — the same one goes into the TTN webhook header), `APP_URL` (the Railway domain, e.g. `https://qimby.up.railway.app`), optionally `SMTP_URL`, `MAIL_FROM`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+4. `railway.json` in the repo sets the start command to `prisma migrate deploy && next start` (migrations run on every deploy) and the health check to `/api/health`.
+5. First deploy: run the seed once — `railway run npm run db:seed` from a machine with the Railway CLI, or a one-off shell in the dashboard. Add `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` to get a first login without e-mail.
+6. Point the TTN webhook **Base URL** at the Railway domain (see above). Watch **Deploy logs** for `POST /api/ingest/ttn 200` and `[offline-check]` lines.
+
+The app runs as a single long-lived Node process, which is what the SSE stream and the in-process offline check expect. Keep it at one replica.
 
 ### Testing locally through a tunnel
 

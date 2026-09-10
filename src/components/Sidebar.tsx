@@ -5,17 +5,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MapPin, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
-import { signOut } from "@/lib/auth";
+import { authApi } from "@/lib/auth-client";
 
 const NAV = [
   { href: "/locations", title: "Locations", icon: MapPin },
   { href: "/maintenance", title: "Maintenance Compliance", icon: ClipboardCheck },
+  { href: "/settings", title: "Settings", icon: Settings },
 ] as const;
 
 const COMING_SOON = [
   { title: "Reports", icon: LineChart },
   { title: "Alerts", icon: Bell },
-  { title: "Settings", icon: Settings },
 ] as const;
 
 export default function Sidebar() {
@@ -23,9 +23,10 @@ export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const handleLogout = () => {
-    signOut();
-    router.push("/login");
+  const handleLogout = async () => {
+    await authApi.logout();
+    router.push("/login?signed_out=1");
+    router.refresh();
   };
 
   return (

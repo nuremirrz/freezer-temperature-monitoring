@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import type { UnitType } from "../src/generated/prisma/client";
+import { hashPassword } from "../src/lib/auth/password";
 
 /**
  * Pilot seed: 5 northern-NJ locations (Teaneck and neighbours), 1 gateway + 5 sensors each,
@@ -178,6 +179,23 @@ async function main() {
     await prisma.sensorChannel.deleteMany({ where: { sensorId: { in: ids } } });
     await prisma.sensor.deleteMany({ where: { id: { in: ids }, readings: { none: {} } } });
     console.log(`– removed stale placeholders: ${stale.map((s) => s.devEui).join(", ")}`);
+  }
+
+  // Optional first admin for local/demo environments — only when both variables are set.
+  if (process.env.SEED_ADMIN_EMAIL && process.env.SEED_ADMIN_PASSWORD) {
+    const email = process.env.SEED_ADMIN_EMAIL.trim().toLowerCase();
+    await prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: {
+        email,
+        name: "Admin",
+        passwordHash: await hashPassword(process.env.SEED_ADMIN_PASSWORD),
+        role: "admin",
+        emailVerifiedAt: new Date(),
+      },
+    });
+    console.log(`✓ admin user ${email} (verified)`);
   }
 
   const counts = {

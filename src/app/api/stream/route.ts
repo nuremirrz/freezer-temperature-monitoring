@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { subscribe } from "@/lib/events";
+import { getSession } from "@/lib/auth/session";
+import { unauthorized } from "@/lib/auth/http";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +15,7 @@ const HEARTBEAT_MS = 25_000;
  * Clients that can't hold SSE should poll /api/locations every 60 s instead.
  */
 export async function GET(req: NextRequest) {
+  if (!(await getSession())) return unauthorized();
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
