@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { MapContainer, TileLayer, Marker, ZoomControl, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { LOCATIONS } from "@/data/locations";
-import { locationStatus, LocationStatus } from "@/data/types";
+import { LocationStatus } from "@/lib/api";
+import { useLiveStore } from "@/store/useLiveStore";
 
 const STATUS_COLOR: Record<LocationStatus, string> = {
   normal: "#16a34a",
@@ -19,8 +19,7 @@ const GLYPH: Record<LocationStatus, string> = {
     '<path d="M4.5 9.5l3 3 6-6.5" stroke="white" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   alert:
     '<path d="M9 4.5v5.5" stroke="white" stroke-width="2.2" stroke-linecap="round"/><circle cx="9" cy="13" r="1.4" fill="white"/>',
-  offline:
-    '<path d="M4.5 9h9" stroke="white" stroke-width="2.2" stroke-linecap="round"/>',
+  offline: '<path d="M4.5 9h9" stroke="white" stroke-width="2.2" stroke-linecap="round"/>',
 };
 
 function markerIcon(status: LocationStatus, selected: boolean) {
@@ -39,8 +38,7 @@ function markerIcon(status: LocationStatus, selected: boolean) {
   });
 }
 
-/** Leaflet needs a nudge whenever its container changes size — panes are shown
- *  and hidden per breakpoint, and a map revealed from `display:none` renders blank. */
+/** Leaflet renders blank when its container was hidden while sizing. */
 function AutoResize() {
   const map = useMap();
   useEffect(() => {
@@ -53,42 +51,44 @@ function AutoResize() {
 
 function FlyToSelected({ selectedId }: { selectedId?: string }) {
   const map = useMap();
+  const locations = useLiveStore((s) => s.locations);
   useEffect(() => {
-    const loc = LOCATIONS.find((l) => l.id === selectedId);
+    const loc = locations.find((l) => l.id === selectedId);
     if (!loc) return;
-    // Offset the center so the marker clears the floating location panel,
-    // which only overlaps the map on wide viewports
+    // Offset the centre so the marker clears the floating panel on wide viewports
     const zoom = Math.max(map.getZoom(), 12);
     const offset = map.getSize().x >= 768 ? 230 : 0;
     const point = map.project([loc.lat, loc.lng], zoom).subtract(L.point(offset, 0));
     map.flyTo(map.unproject(point, zoom), zoom, { duration: 0.8 });
-  }, [selectedId, map]);
+  }, [selectedId, locations, map]);
+  return null;
+}
+
+/** Fits all pins on first load, so any set of locations is visible without panning. */
+function FitAll({ enabled }: { enabled: boolean }) {
+  const map = useMap();
+  const locations = useLiveStore((s) => s.locations);
+  useEffect(() => {
+    if (!enabled || locations.length === 0) return;
+    const bounds = L.latLngBounds(locations.map((l) => [l.lat, l.lng] as [number, number]));
+    map.fitBounds(bounds, { padding: [70, 70], maxZoom: 12 });
+  }, [enabled, locations, map]);
   return null;
 }
 
 export default function MapView({ selectedId }: { selectedId?: string }) {
   const router = useRouter();
-
-  const markers = useMemo(
-    () =>
-      LOCATIONS.map((loc) => ({
-        loc,
-        status: locationStatus(loc),
-      })),
-    [],
-  );
+  const locations = useLiveStore((s) => s.locations);
 
   return (
     <div className="absolute inset-0 z-0">
       <MapContainer
         center={[40.8, -74.09]}
         zoom={11}
-        zoomControl={false}
+        zoomControl
         attributionControl={false}
         className="h-full w-full"
       >
-        {/* The floating location panel covers the map's left edge */}
-        <ZoomControl position="topright" />
         {/* Positron-style light basemap: Esri Light Gray Canvas, free and key-less */}
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
@@ -100,21 +100,23 @@ export default function MapView({ selectedId }: { selectedId?: string }) {
           maxNativeZoom={16}
           maxZoom={18}
         />
+        <FitAll enabled={!selectedId} />
         <FlyToSelected selectedId={selectedId} />
         <AutoResize />
-        {markers.map(({ loc, status }) => (
+
+        {locations.map((loc) => (
           <Marker
             key={loc.id}
             position={[loc.lat, loc.lng]}
-            icon={markerIcon(status, loc.id === selectedId)}
-            zIndexOffset={status === "alert" ? 200 : status === "offline" ? 100 : 0}
+            icon={markerIcon(loc.status, loc.id === selectedId)}
+            zIndexOffset={loc.status === "alert" ? 200 : loc.status === "offline" ? 100 : 0}
             eventHandlers={{ click: () => router.push(`/locations/${loc.id}`) }}
           />
         ))}
       </MapContainer>
 
-      {/* Legend — bottom-left on phones so it clears the map/list toggle */}
-      <div className="absolute bottom-4 left-4 z-[1000] rounded-xl bg-panel/95 px-3 py-2 shadow-md md:right-4 md:left-auto md:px-4 md:py-3">
+      {/* Legend — top-right on phones so it clears the map/list toggle */}
+      <div className="absolute top-4 right-4 z-[1000] rounded-xl bg-panel/95 px-3 py-2 shadow-md md:top-auto md:bottom-4 md:px-4 md:py-3">
         <div className="flex flex-col gap-2 text-xs font-medium text-ink-soft">
           <div className="flex items-center gap-2">
             <span className="size-2.5 rounded-full bg-ok" /> Normal

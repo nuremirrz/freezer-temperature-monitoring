@@ -4,6 +4,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
+  FlaskConical,
   CheckCircle2,
   Clock,
   AlertTriangle,
@@ -136,7 +137,15 @@ export default function MaintenancePage() {
 
       <main className="@container min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl p-4 md:p-6">
-          <h1 className="text-2xl font-semibold md:text-3xl">Maintenance Compliance</h1>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl font-semibold md:text-3xl">Maintenance Compliance</h1>
+            <span
+              title="Sample plan — preventive maintenance is not in the database yet"
+              className="inline-flex items-center gap-1 rounded-md bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn"
+            >
+              <FlaskConical size={12} /> Demo data
+            </span>
+          </div>
           <p className="mt-1 text-sm text-muted">
             Track {PM_VISITS_PER_YEAR} preventive maintenance visits per year for every Burger
             King location.

@@ -8,8 +8,7 @@ import Sidebar from "@/components/Sidebar";
 import LocationsList from "@/components/LocationsList";
 import LocationPanel from "@/components/LocationPanel";
 import UnitPanel from "@/components/UnitPanel";
-import { getLocation, getUnit } from "@/data/locations";
-import { useAppStore } from "@/store/useAppStore";
+import { useLiveStore } from "@/store/useLiveStore";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
@@ -20,56 +19,83 @@ export default function LocationsLayout({ children }: { children: React.ReactNod
   const locationId = segments[0];
   const unitId = segments[1] === "units" ? segments[2] : undefined;
 
-  const loc = locationId ? getLocation(locationId) : undefined;
-  const unit = loc && unitId ? getUnit(loc.id, unitId) : undefined;
+  const start = useLiveStore((s) => s.start);
+  const loadLocation = useLiveStore((s) => s.loadLocation);
+  const detail = useLiveStore((s) => (locationId ? s.details[locationId] : undefined));
+  const detailError = useLiveStore((s) => (locationId ? s.detailError[locationId] : undefined));
 
-  const startSimulation = useAppStore((s) => s.startSimulation);
   // false during SSR/hydration, true once on the client
   const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const [mobileMap, setMobileMap] = useState(false);
 
   useEffect(() => {
-    startSimulation();
-  }, [startSimulation]);
+    start();
+  }, [start]);
+
+  useEffect(() => {
+    if (locationId) void loadLocation(locationId);
+  }, [locationId, loadLocation]);
 
   if (!mounted) return <div className="h-screen bg-page" />;
 
+  const unit = detail?.units.find((u) => u.id === unitId);
+
   // Narrow viewports show one pane at a time; each breakpoint brings back the
   // pane to its left once there is room for both.
-  const listClass = unit
+  const listClass = unitId
     ? "hidden xl:flex"
-    : loc
+    : locationId
       ? "hidden lg:flex"
       : mobileMap
         ? "hidden md:flex"
         : "flex";
 
-  const contentClass = !loc && !mobileMap ? "hidden md:flex" : "flex";
+  const contentClass = !locationId && !mobileMap ? "hidden md:flex" : "flex";
 
   return (
     <div className="flex h-screen flex-col overflow-hidden md:flex-row">
       <Sidebar />
 
       <div className="flex min-h-0 flex-1 md:contents">
-        <LocationsList selectedId={loc?.id} className={listClass} />
+        <LocationsList selectedId={locationId} className={listClass} />
 
         <div className={`relative min-w-0 flex-1 ${contentClass}`}>
-          {!unit && <MapView selectedId={loc?.id} />}
+          {!unitId && <MapView selectedId={locationId} />}
 
-          {loc && (
+          {locationId && !detail && !detailError && (
+            <div className="z-10 m-4 w-full max-w-md rounded-2xl bg-page p-5">
+              <div className="h-6 w-48 animate-pulse rounded bg-panel" />
+              <div className="mt-4 h-20 animate-pulse rounded-xl bg-panel" />
+              <div className="mt-3 h-20 animate-pulse rounded-xl bg-panel" />
+            </div>
+          )}
+
+          {locationId && detailError && (
+            <div className="z-10 m-4 rounded-2xl bg-panel p-5 text-sm text-alert shadow-lg">
+              {detailError}
+              <button
+                onClick={() => void loadLocation(locationId)}
+                className="mt-2 block text-accent hover:underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {detail && (
             <LocationPanel
-              loc={loc}
+              loc={detail}
               selectedUnitId={unit?.id}
               compact={Boolean(unit)}
               className={unit ? "hidden xl:flex" : "flex"}
             />
           )}
-          {loc && unit && <UnitPanel loc={loc} unit={unit} />}
+          {detail && unit && <UnitPanel loc={detail} unit={unit} />}
         </div>
       </div>
 
       {/* Phones can't fit list and map side by side — swap between them */}
-      {!loc && (
+      {!locationId && (
         <button
           onClick={() => setMobileMap((m) => !m)}
           className="fixed right-4 bottom-20 z-30 flex items-center gap-2 rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-lg md:hidden"

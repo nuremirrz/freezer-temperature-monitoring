@@ -21,17 +21,27 @@ import {
   CloudSnow,
   CloudLightning,
 } from "lucide-react";
-import { BKLocation, Unit, UnitType, fullAddress, shortAddress, formatRange } from "@/data/types";
+import {
+  LocationDetail,
+  UnitDetail,
+  UnitType,
+  STATUS_LABEL,
+  shortAddress,
+  fullAddress,
+  formatRange,
+  formatTemp,
+  isOutOfRange,
+  formatDuration,
+  formatAge,
+} from "@/lib/api";
 import { fetchWeather, describeWeather, WeatherInfo } from "@/data/weather";
-import { useAppStore, formatDuration } from "@/store/useAppStore";
-import { StatusDot, STATUS_LABEL } from "./StatusIcon";
-
-/* ---------------------------- helpers ---------------------------- */
+import { useLiveStore } from "@/store/useLiveStore";
+import { StatusDot } from "./StatusIcon";
 
 const TYPE_ICON: Record<UnitType, React.ComponentType<{ size?: number; className?: string }>> = {
   freezer: Refrigerator,
-  "walk-in-cooler": Snowflake,
-  "walk-in-freezer": Snowflake,
+  walk_in_cooler: Snowflake,
+  walk_in_freezer: Snowflake,
   ac: AirVent,
 };
 
@@ -48,19 +58,17 @@ const WEATHER_ICON = {
 
 type TabKey = "all" | "freezer" | "ac" | "walkin";
 
-function tabOf(u: Unit): Exclude<TabKey, "all"> {
+function tabOf(u: UnitDetail): Exclude<TabKey, "all"> {
   if (u.type === "ac") return "ac";
   if (u.type === "freezer") return "freezer";
   return "walkin";
 }
 
-/* ---------------------------- cards ---------------------------- */
+function StatusCard({ loc }: { loc: LocationDetail }) {
+  const alerts = loc.units.filter((u) => u.status === "alert").length;
+  const offline = loc.units.filter((u) => u.status === "offline").length;
 
-function StatusCard({ loc }: { loc: BKLocation }) {
-  const alertCount = loc.units.filter((u) => u.status === "alert").length;
-  const offlineCount = loc.units.filter((u) => u.status === "offline").length;
-
-  if (alertCount > 0) {
+  if (alerts > 0) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-alert/25 bg-alert-soft p-4">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-alert/10">
@@ -69,16 +77,14 @@ function StatusCard({ loc }: { loc: BKLocation }) {
         <div>
           <div className="text-sm font-semibold text-ink">Temperature Alert</div>
           <div className="text-xs text-muted">
-            {alertCount > 1
-              ? "Multiple temperature deviations detected"
-              : "1 temperature deviation detected"}
+            {alerts > 1 ? "Multiple temperature deviations detected" : "1 temperature deviation detected"}
           </div>
         </div>
       </div>
     );
   }
 
-  if (offlineCount > 0) {
+  if (offline > 0) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-line bg-offline-soft p-4">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-offline/15">
@@ -86,7 +92,11 @@ function StatusCard({ loc }: { loc: BKLocation }) {
         </div>
         <div>
           <div className="text-sm font-semibold text-ink">Offline Units</div>
-          <div className="text-xs text-muted">Some units are not reporting</div>
+          <div className="text-xs text-muted">
+            {offline === loc.units.length
+              ? "No sensor at this location is reporting"
+              : "Some units are not reporting"}
+          </div>
         </div>
       </div>
     );
@@ -105,10 +115,9 @@ function StatusCard({ loc }: { loc: BKLocation }) {
   );
 }
 
-function WeatherCard({ loc }: { loc: BKLocation }) {
+function WeatherCard({ loc }: { loc: LocationDetail }) {
   const [weather, setWeather] = useState<WeatherInfo | null | "loading">("loading");
 
-  // Remounted via `key` when the location changes, so state starts fresh
   useEffect(() => {
     let alive = true;
     fetchWeather(loc.lat, loc.lng).then((w) => alive && setWeather(w));
@@ -120,9 +129,9 @@ function WeatherCard({ loc }: { loc: BKLocation }) {
       alive = false;
       clearInterval(id);
     };
-  }, [loc.id, loc.lat, loc.lng]);
+  }, [loc.lat, loc.lng]);
 
-  if (weather === null) return null; // hide the card on error, as per spec
+  if (weather === null) return null; // hide on error rather than show a broken card
 
   const desc = weather !== "loading" ? describeWeather(weather.code) : null;
   const Icon = desc ? WEATHER_ICON[desc.icon] : Cloud;
@@ -138,14 +147,16 @@ function WeatherCard({ loc }: { loc: BKLocation }) {
           {desc ? desc.label : "—"} · {loc.city}
         </div>
       </div>
-      <div className="text-2xl font-semibold">
-        {weather === "loading" ? "…" : `${weather.temp}°F`}
-      </div>
+      <div className="text-2xl font-semibold">{weather === "loading" ? "…" : `${weather.temp}°F`}</div>
     </div>
   );
 }
 
-/* ---------------------------- main panel ---------------------------- */
+function UnitTemp({ u }: { u: UnitDetail }) {
+  if (!u.lastReading) return <span className="text-offline">—</span>;
+  const bad = isOutOfRange(u.lastReading.tempF, u);
+  return <span className={bad ? "text-alert" : ""}>{formatTemp(u.lastReading.tempF)}</span>;
+}
 
 export default function LocationPanel({
   loc,
@@ -153,15 +164,15 @@ export default function LocationPanel({
   compact = false,
   className = "flex",
 }: {
-  loc: BKLocation;
+  loc: LocationDetail;
   selectedUnitId?: string;
   compact?: boolean;
   className?: string;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("all");
-  const temps = useAppStore((s) => s.temps);
-  const minuteTick = useAppStore((s) => s.minuteTick);
+  const minuteTick = useLiveStore((s) => s.minuteTick);
+  void minuteTick; // re-render durations and "x min ago" every minute
 
   const counts = useMemo(() => {
     const c = { all: loc.units.length, freezer: 0, ac: 0, walkin: 0 };
@@ -178,17 +189,18 @@ export default function LocationPanel({
     { key: "walkin", label: `Walk-ins (${counts.walkin})` },
   ];
 
+  const openUnit = (id: string) => router.push(`/locations/${loc.id}/units/${id}`);
+
   return (
     <div
       className={`@container z-10 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-page md:flex-none ${
         compact
-          ? "md:w-[400px] md:shrink-0 md:border-r md:border-line xl:w-[460px] 2xl:w-[560px]"
+          ? "md:w-[400px] md:shrink-0 md:border-r md:border-line 2xl:w-[560px]"
           : "md:m-4 md:w-[420px] md:shrink-0 md:rounded-2xl md:shadow-lg lg:w-[520px] xl:w-[600px]"
       } ${className}`}
     >
       <div className="flex flex-col gap-3 p-4 md:p-5">
         <div className="flex items-start gap-2">
-          {/* The list is off-screen below lg — give it a way back */}
           <Link
             href="/locations"
             title="Back to locations"
@@ -206,7 +218,6 @@ export default function LocationPanel({
         <StatusCard loc={loc} />
         <WeatherCard key={loc.id} loc={loc} />
 
-        {/* View tabs */}
         <div className="mt-1 flex flex-wrap gap-1.5">
           {TABS.map((t) => (
             <button
@@ -223,16 +234,14 @@ export default function LocationPanel({
           ))}
         </div>
 
-        {/* Units, as stacked cards on phones — six columns never fit */}
+        {/* Units, as stacked cards on narrow panels — six columns never fit */}
         <div className="overflow-hidden rounded-xl border border-line bg-panel @md:hidden">
           {visible.map((u) => {
             const Icon = TYPE_ICON[u.type];
-            const temp = temps[u.id];
-            void minuteTick;
             return (
               <button
                 key={u.id}
-                onClick={() => router.push(`/locations/${loc.id}/units/${u.id}`)}
+                onClick={() => openUnit(u.id)}
                 className="flex w-full items-center gap-3 border-b border-line-soft px-4 py-3 text-left last:border-0"
               >
                 <Icon size={18} className="shrink-0 text-muted" />
@@ -242,11 +251,7 @@ export default function LocationPanel({
                     <StatusDot status={u.status} />
                     <span
                       className={
-                        u.status === "alert"
-                          ? "text-alert"
-                          : u.status === "offline"
-                            ? "text-offline"
-                            : ""
+                        u.status === "alert" ? "text-alert" : u.status === "offline" ? "text-offline" : ""
                       }
                     >
                       {STATUS_LABEL[u.status]}
@@ -256,16 +261,12 @@ export default function LocationPanel({
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div
-                    className={`text-sm font-semibold tabular-nums ${
-                      u.status === "alert" ? "text-alert" : ""
-                    }`}
-                  >
-                    {u.status === "offline" ? "—" : `${Math.round(temp)}°F`}
+                  <div className="text-sm font-semibold tabular-nums">
+                    <UnitTemp u={u} />
                   </div>
-                  {u.status === "alert" && u.alertSince && (
+                  {u.activeAlert && (
                     <div className="text-xs tabular-nums text-muted">
-                      {formatDuration(u.alertSince)}
+                      {formatDuration(u.activeAlert.openedAt)}
                     </div>
                   )}
                 </div>
@@ -274,7 +275,7 @@ export default function LocationPanel({
           })}
         </div>
 
-        {/* Units table */}
+        {/* Units table when there is room */}
         <div className="hidden overflow-hidden rounded-xl border border-line bg-panel @md:block">
           <table className="w-full text-sm">
             <thead>
@@ -290,13 +291,11 @@ export default function LocationPanel({
             <tbody>
               {visible.map((u) => {
                 const Icon = TYPE_ICON[u.type];
-                const temp = temps[u.id];
-                void minuteTick; // re-render durations every minute
                 return (
                   <tr
                     key={u.id}
-                    onClick={() => router.push(`/locations/${loc.id}/units/${u.id}`)}
-                    className={`cursor-pointer border-b border-line-soft last:border-0 transition-colors ${
+                    onClick={() => openUnit(u.id)}
+                    className={`cursor-pointer border-b border-line-soft transition-colors last:border-0 ${
                       u.id === selectedUnitId ? "bg-page" : "hover:bg-page/60"
                     }`}
                   >
@@ -322,20 +321,14 @@ export default function LocationPanel({
                         </span>
                       </div>
                     </td>
-                    <td
-                      className={`px-2 py-3 font-semibold tabular-nums ${
-                        u.status === "alert" ? "text-alert" : ""
-                      }`}
-                    >
-                      {u.status === "offline" ? "—" : `${Math.round(temp)}°F`}
+                    <td className="px-2 py-3 font-semibold tabular-nums">
+                      <UnitTemp u={u} />
                     </td>
                     <td className="hidden px-2 py-3 whitespace-nowrap text-muted @lg:table-cell">
                       {formatRange(u)}
                     </td>
                     <td className="px-2 py-3 tabular-nums text-muted">
-                      {u.status === "alert" && u.alertSince
-                        ? formatDuration(u.alertSince)
-                        : "—"}
+                      {u.activeAlert ? formatDuration(u.activeAlert.openedAt) : "—"}
                     </td>
                     <td className="hidden px-2 py-3 @xl:table-cell">
                       <EllipsisVertical size={15} className="text-faint" />
@@ -346,8 +339,27 @@ export default function LocationPanel({
             </tbody>
           </table>
         </div>
-        <div className="text-center text-xs text-faint">All times shown in local time</div>
+
+        <LastUpdate loc={loc} />
       </div>
+    </div>
+  );
+}
+
+/** Honest footer: when the freshest reading at this location arrived. */
+function LastUpdate({ loc }: { loc: LocationDetail }) {
+  const minuteTick = useLiveStore((s) => s.minuteTick);
+  void minuteTick;
+
+  const latest = loc.units
+    .map((u) => u.lastReading?.measuredAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  return (
+    <div className="text-center text-xs text-faint">
+      {latest ? `Last reading ${formatAge(latest)} · times in local time` : "No readings yet"}
     </div>
   );
 }

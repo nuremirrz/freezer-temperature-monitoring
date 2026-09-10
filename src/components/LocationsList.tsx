@@ -1,15 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react";
-import { LOCATIONS } from "@/data/locations";
-import { locationStatus, shortAddress, LocationStatus } from "@/data/types";
+import { shortAddress } from "@/lib/api";
 import { StatusIcon } from "./StatusIcon";
-import { useAppStore, SortMode } from "@/store/useAppStore";
-
-const STATUS_ORDER: Record<LocationStatus, number> = { alert: 0, offline: 1, normal: 2 };
+import { useLiveStore, sortLocations, SortMode } from "@/store/useLiveStore";
 
 const SORT_LABEL: Record<SortMode, string> = {
   alerts: "Alerts first",
@@ -17,7 +14,8 @@ const SORT_LABEL: Record<SortMode, string> = {
 };
 
 function SortDropdown() {
-  const { sortMode, setSortMode } = useAppStore();
+  const sortMode = useLiveStore((s) => s.sortMode);
+  const setSortMode = useLiveStore((s) => s.setSortMode);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -60,6 +58,24 @@ function SortDropdown() {
   );
 }
 
+function SummaryCard({
+  icon,
+  count,
+  label,
+}: {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-panel p-3">
+      {icon}
+      <div className="mt-1.5 text-xl font-semibold leading-none tabular-nums">{count}</div>
+      <div className="mt-1 text-xs text-muted">{label}</div>
+    </div>
+  );
+}
+
 export default function LocationsList({
   selectedId,
   className = "flex",
@@ -67,27 +83,14 @@ export default function LocationsList({
   selectedId?: string;
   className?: string;
 }) {
-  const sortMode = useAppStore((s) => s.sortMode);
+  const sortMode = useLiveStore((s) => s.sortMode);
+  const locations = useLiveStore((s) => s.locations);
+  const summary = useLiveStore((s) => s.summary);
+  const listLoaded = useLiveStore((s) => s.listLoaded);
+  const listError = useLiveStore((s) => s.listError);
+  const connection = useLiveStore((s) => s.connection);
 
-  const rows = useMemo(() => {
-    const withStatus = LOCATIONS.map((loc) => ({ loc, status: locationStatus(loc) }));
-    if (sortMode === "alerts") {
-      withStatus.sort(
-        (a, b) =>
-          STATUS_ORDER[a.status] - STATUS_ORDER[b.status] ||
-          a.loc.storeNumber - b.loc.storeNumber,
-      );
-    } else {
-      withStatus.sort((a, b) => a.loc.storeNumber - b.loc.storeNumber);
-    }
-    return withStatus;
-  }, [sortMode]);
-
-  const counts = useMemo(() => {
-    const c = { alert: 0, offline: 0, normal: 0 };
-    for (const loc of LOCATIONS) c[locationStatus(loc)]++;
-    return c;
-  }, []);
+  const rows = useMemo(() => sortLocations(locations, sortMode), [locations, sortMode]);
 
   return (
     <div
@@ -95,40 +98,52 @@ export default function LocationsList({
     >
       <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-5 md:pt-5">
         <div className="flex items-center gap-2.5">
-          <Image
-            src="/bk-logo.png"
-            alt="Burger King"
-            width={28}
-            height={28}
-            className="md:hidden"
-            priority
-          />
+          <Image src="/bk-logo.png" alt="Burger King" width={28} height={28} className="md:hidden" priority />
           <h1 className="text-lg font-semibold">Locations</h1>
+          {connection === "polling" && (
+            <span
+              title="Live updates unavailable — refreshing every 60 s"
+              className="size-1.5 rounded-full bg-warn"
+            />
+          )}
         </div>
         <SortDropdown />
       </div>
 
-      {/* Summary cards — counted from the real data */}
       <div className="grid grid-cols-3 gap-2.5 px-4 pb-4 md:px-5">
-        <div className="rounded-xl border border-line bg-panel p-3">
-          <AlertTriangle size={18} className="text-alert" />
-          <div className="mt-1.5 text-xl font-semibold leading-none">{counts.alert}</div>
-          <div className="mt-1 text-xs text-muted">Alerts</div>
-        </div>
-        <div className="rounded-xl border border-line bg-panel p-3">
-          <MinusCircle size={18} className="text-offline" />
-          <div className="mt-1.5 text-xl font-semibold leading-none">{counts.offline}</div>
-          <div className="mt-1 text-xs text-muted">Offline</div>
-        </div>
-        <div className="rounded-xl border border-line bg-panel p-3">
-          <CheckCircle2 size={18} className="text-ok" />
-          <div className="mt-1.5 text-xl font-semibold leading-none">{counts.normal}</div>
-          <div className="mt-1 text-xs text-muted">Normal</div>
-        </div>
+        <SummaryCard icon={<AlertTriangle size={18} className="text-alert" />} count={summary.alert} label="Alerts" />
+        <SummaryCard icon={<MinusCircle size={18} className="text-offline" />} count={summary.offline} label="Offline" />
+        <SummaryCard icon={<CheckCircle2 size={18} className="text-ok" />} count={summary.normal} label="Normal" />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-line-soft">
-        {rows.map(({ loc, status }) => (
+        {!listLoaded && (
+          <div className="space-y-2 p-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-12 animate-pulse rounded-lg bg-page" />
+            ))}
+          </div>
+        )}
+
+        {listLoaded && listError && (
+          <div className="p-5 text-sm text-alert">
+            {listError}
+            <button
+              onClick={() => void useLiveStore.getState().loadLocations()}
+              className="mt-2 block text-accent hover:underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {listLoaded && !listError && rows.length === 0 && (
+          <div className="p-5 text-sm text-muted">
+            No locations yet. Run the seed script to add them.
+          </div>
+        )}
+
+        {rows.map((loc) => (
           <Link
             key={loc.id}
             href={`/locations/${loc.id}`}
@@ -136,7 +151,7 @@ export default function LocationsList({
               loc.id === selectedId ? "bg-page" : "hover:bg-page/60"
             }`}
           >
-            <StatusIcon status={status} />
+            <StatusIcon status={loc.status} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{loc.name}</div>
               <div className="truncate text-xs text-muted">{shortAddress(loc)}</div>

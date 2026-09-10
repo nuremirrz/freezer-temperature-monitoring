@@ -1,6 +1,6 @@
 # Freezer Temperature Monitor
 
-Front-end demo prototype: freezer / cold-storage / HVAC temperature monitoring for Burger King restaurants in northern New Jersey. **No backend** — all data is static/mocked and "real-time" behaviour is simulated on the client.
+Cold-storage and HVAC temperature monitoring for Burger King restaurants in northern New Jersey. Sensor data arrives from The Things Network, is stored in PostgreSQL and evaluated for alerts; the UI reads it live over SSE.
 
 ## Quick start
 
@@ -23,13 +23,18 @@ New here? [GUIDE.md](GUIDE.md) walks through every screen and includes a two-min
 | Unit detail | `/locations/[id]/units/[unitId]` | Overview card (model / serial / year / image), Current State tiles, 24H / 7D / 30D chart with threshold line, Service History (PM visits, repairs, installation) |
 | Maintenance Compliance | `/maintenance` | 3 preventive-maintenance visits per year per location: summary cards, search, status filter, year picker; progress / last & next PM / status per location |
 
-## Real-time simulation
+## Live data in the UI
 
-- A single global tick (zustand store): every **5 s** each online unit's temperature drifts ±1–2 °F. Normal units are clamped inside their range, alert units stay **outside** (they never recover on their own).
-- Every **minute** alert durations grow.
-- Chart series are generated once per unit (seeded PRNG, stable between reloads); alert units' 24H curve rises through the threshold.
-- Normal ranges: AC 55–58 °F, everything else −10…+10 °F.
-- The only external request is current weather per city (Open-Meteo, no API key, cached ~12 min).
+The screens read the API, not fixtures:
+
+- `src/lib/api.ts` types every endpoint; `src/store/useLiveStore.ts` loads the list and the open location, subscribes to `/api/stream` and falls back to polling every 60 s when SSE cannot connect (a dot next to "Locations" shows which mode is active).
+- A `reading` event patches the open location in place, so a temperature moves the moment an uplink lands. An `alert` event refetches, because statuses and counts are derived server-side.
+- Durations and "x min ago" re-render on a local one-minute tick, no round-trip.
+- A reading outside the unit's range is red immediately; the **Alert** status still needs two consecutive bad readings, so a single spike shows red without raising an alert.
+- Normal ranges: AC 55–58 °F, everything else −10…+10 °F, stored per unit.
+- Outdoor weather per city comes from Open-Meteo (no API key, cached ~12 min).
+
+**Still demo content, labelled as such in the UI:** Service History on the unit screen and the Maintenance Compliance page. Both carry a "Demo data" badge — there is no service-log or preventive-maintenance table in the backend yet.
 
 ## Stack
 
@@ -37,7 +42,7 @@ Next.js (App Router) · TypeScript · Tailwind CSS · zustand · recharts · rea
 
 ## Notes
 
-- Mock data lives in `src/data/` (locations, units, history generator, weather helper).
+- `src/data/` now only holds the weather helper, the seeded PRNG and the leftover demo generators used by the two screens still marked "Demo data".
 - Route protection: `src/proxy.ts` (Next 16 proxy) redirects visitors without a session cookie; the `(app)` layout and every read API validate the session against the database.
 - Unit images are placeholder SVGs in `public/units/` — swap for real photos any time.
 

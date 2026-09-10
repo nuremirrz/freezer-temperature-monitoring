@@ -2,41 +2,76 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useMemo } from "react";
 import Link from "next/link";
-import { AlertTriangle, TrendingUp, MoveRight, X } from "lucide-react";
-import { BKLocation, Unit, UNIT_IMAGE, UNIT_TYPE_LABEL, formatRange } from "@/data/types";
-import { hashString } from "@/data/rng";
-import { useAppStore, formatDuration } from "@/store/useAppStore";
+import {
+  AlertTriangle,
+  TrendingUp,
+  TrendingDown,
+  MoveRight,
+  WifiOff,
+  X,
+  BatteryMedium,
+  Radio,
+  Wind,
+} from "lucide-react";
+import {
+  LocationDetail,
+  UnitDetail,
+  UNIT_IMAGE,
+  UNIT_TYPE_LABEL,
+  formatRange,
+  formatTemp,
+  isOutOfRange,
+  formatDuration,
+  formatAge,
+  formatLocalTime,
+} from "@/lib/api";
+import { useLiveStore } from "@/store/useLiveStore";
 import TempChart from "./TempChart";
 import ServiceHistory from "./ServiceHistory";
 
-// Pseudo "state started" moments for non-alert units, stable for the session
-const stateSinceCache = new Map<string, number>();
-function stateSince(unit: Unit): number {
-  if (unit.status === "alert" && unit.alertSince) return unit.alertSince;
-  const hit = stateSinceCache.get(unit.id);
-  if (hit) return hit;
-  const minutes = 180 + (hashString(unit.id) % (60 * 46)); // 3h .. ~2d
-  const since = Date.now() - minutes * 60_000;
-  stateSinceCache.set(unit.id, since);
-  return since;
+function Tile({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
+      <div className="text-xs text-muted">{label}</div>
+      {children}
+    </div>
+  );
 }
 
-export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }) {
-  const temp = useAppStore((s) => s.temps[unit.id]);
-  const minuteTick = useAppStore((s) => s.minuteTick);
+/** Which direction the temperature is heading, from the alert peak or the range midpoint. */
+function Trend({ unit }: { unit: UnitDetail }) {
+  if (!unit.lastReading) {
+    return <div className="mt-1.5 text-xl font-semibold text-offline">—</div>;
+  }
+  if (isOutOfRange(unit.lastReading.tempF, unit)) {
+    const above = unit.lastReading.tempF > unit.rangeMaxF;
+    return (
+      <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold text-alert @xs:text-xl">
+        {above ? "Rising" : "Falling"}
+        {above ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold text-ok @xs:text-xl">
+      Stable <MoveRight size={18} />
+    </div>
+  );
+}
+
+export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: UnitDetail }) {
+  const minuteTick = useLiveStore((s) => s.minuteTick);
+  void minuteTick; // durations and "x min ago" refresh every minute
 
   const isAlert = unit.status === "alert";
   const isOffline = unit.status === "offline";
-
-  const since = useMemo(() => stateSince(unit), [unit]);
-  void minuteTick; // refresh "In this state" every minute
+  const sensor = unit.sensor;
+  const outOfRange = unit.lastReading ? isOutOfRange(unit.lastReading.tempF, unit) : false;
 
   return (
     <div className="@container z-10 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-page">
       <div className="mx-auto w-full max-w-3xl p-4 md:p-5">
-        {/* Overview tab bar — single item, others will come later */}
         <div className="mb-4 flex items-center justify-between border-b border-line">
           <span className="inline-block border-b-2 border-primary px-1 pb-2 text-sm font-semibold text-ink">
             Overview
@@ -53,22 +88,22 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
         {/* Unit description */}
         <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-line bg-panel p-4 md:p-5">
           <div className="min-w-0">
-            <h3 className="text-lg font-semibold">{unit.systemName}</h3>
+            <h3 className="text-lg font-semibold">{unit.name}</h3>
             <div className="mb-4 text-sm text-muted">
-              {loc.name} · {unit.area}
+              {loc.name} · {UNIT_TYPE_LABEL[unit.type]}
             </div>
             <dl className="space-y-1.5 text-sm">
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-muted">Model:</dt>
-                <dd className="font-medium">{unit.model}</dd>
+                <dd className="font-medium">{unit.model ?? "—"}</dd>
               </div>
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-muted">Serial N:</dt>
-                <dd className="font-medium">{unit.serial}</dd>
+                <dd className="font-medium">{unit.serial ?? "—"}</dd>
               </div>
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-muted">Year:</dt>
-                <dd className="font-medium">{unit.year}</dd>
+                <dd className="font-medium">{unit.year ?? "—"}</dd>
               </div>
             </dl>
           </div>
@@ -83,58 +118,107 @@ export default function UnitPanel({ loc, unit }: { loc: BKLocation; unit: Unit }
         <div className="mb-4">
           <div className="mb-2 text-sm font-semibold">Current State</div>
           <div className="grid grid-cols-2 gap-2.5 @3xl:grid-cols-4 md:gap-3">
-            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
-              <div className="text-xs text-muted">Current Temp</div>
+            <Tile label="Current Temp">
               <div
                 className={`mt-1 text-xl font-semibold tabular-nums @xs:text-2xl ${
-                  isAlert ? "text-alert" : ""
+                  outOfRange ? "text-alert" : ""
                 }`}
               >
-                {isOffline ? "—" : `${Math.round(temp)}°F`}
+                {unit.lastReading ? formatTemp(unit.lastReading.tempF) : "—"}
               </div>
               {isAlert && (
                 <div className="mt-1 flex items-center gap-1 text-xs font-medium text-alert">
                   <AlertTriangle size={12} /> Needs attention
                 </div>
               )}
-            </div>
+              {outOfRange && !isAlert && (
+                <div className="mt-1 text-xs font-medium text-warn">Out of range, confirming</div>
+              )}
+              {unit.lastReading && !isAlert && !outOfRange && (
+                <div className="mt-1 text-xs text-faint">{formatAge(unit.lastReading.measuredAt)}</div>
+              )}
+              {isOffline && (
+                <div className="mt-1 flex items-center gap-1 text-xs font-medium text-offline">
+                  <WifiOff size={12} /> Not reporting
+                </div>
+              )}
+            </Tile>
 
-            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
-              <div className="text-xs text-muted">Normal Range</div>
+            <Tile label="Normal Range">
               <div className="mt-1.5 text-base font-semibold whitespace-nowrap tabular-nums @xs:text-lg @md:text-xl">
                 {formatRange(unit)}
               </div>
-            </div>
+            </Tile>
 
-            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
-              <div className="text-xs text-muted">In this state</div>
+            <Tile label={unit.activeAlert ? "In this state" : "Last reading"}>
               <div className="mt-1.5 text-lg font-semibold tabular-nums @xs:text-xl">
-                {formatDuration(since)}
+                {unit.activeAlert
+                  ? formatDuration(unit.activeAlert.openedAt)
+                  : unit.lastReading
+                    ? formatAge(unit.lastReading.measuredAt)
+                    : "—"}
               </div>
-            </div>
+            </Tile>
 
-            <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
-              <div className="text-xs text-muted">Trend</div>
-              {isOffline ? (
-                <div className="mt-1.5 text-lg font-semibold text-offline @xs:text-xl">—</div>
-              ) : isAlert ? (
-                <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold @xs:text-xl text-alert">
-                  Rising <TrendingUp size={18} />
-                </div>
-              ) : (
-                <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold @xs:text-xl text-ok">
-                  Stable <MoveRight size={18} />
+            <Tile label="Trend">
+              <Trend unit={unit} />
+            </Tile>
+          </div>
+        </div>
+
+        <TempChart unit={unit} timeZone={loc.timezone} />
+
+        {/* Sensor health — real hardware telemetry, only when a sensor is mapped */}
+        {sensor && (
+          <div className="mt-4 rounded-xl border border-line bg-panel p-4 md:p-5">
+            <div className="mb-3 text-sm font-semibold">Sensor</div>
+            <div className="grid gap-3 text-sm @lg:grid-cols-2">
+              <div className="flex items-center gap-2.5">
+                <Radio size={16} className="shrink-0 text-muted" />
+                <span className="text-muted">Device</span>
+                <span className="ml-auto font-medium tabular-nums">
+                  {sensor.devEui}
+                  {sensor.nodeType ? ` · ${sensor.nodeType}` : ""} · ch{sensor.channel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <BatteryMedium size={16} className="shrink-0 text-muted" />
+                <span className="text-muted">Battery</span>
+                <span className="ml-auto font-medium tabular-nums">
+                  {sensor.batteryV ? `${sensor.batteryV} V` : "—"}
+                  {sensor.batteryPct !== null ? ` · ${sensor.batteryPct}%` : ""}
+                  {sensor.batStatus ? ` · ${sensor.batStatus}` : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Radio size={16} className="shrink-0 text-muted" />
+                <span className="text-muted">Signal</span>
+                <span className="ml-auto font-medium tabular-nums">
+                  {sensor.lastRssi !== null ? `${sensor.lastRssi} dBm` : "—"}
+                  {sensor.lastSnr !== null ? ` · SNR ${sensor.lastSnr}` : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-muted">Last seen</span>
+                <span className="ml-auto font-medium tabular-nums">
+                  {sensor.lastSeenAt ? formatLocalTime(sensor.lastSeenAt, loc.timezone) : "never"}
+                </span>
+              </div>
+              {sensor.ambientTempF !== null && (
+                <div className="flex items-center gap-2.5">
+                  <Wind size={16} className="shrink-0 text-muted" />
+                  <span className="text-muted">Air around the device</span>
+                  <span className="ml-auto font-medium tabular-nums">
+                    {Math.round(sensor.ambientTempF)}°F
+                    {sensor.ambientHum !== null ? ` · ${Math.round(sensor.ambientHum)}%` : ""}
+                  </span>
                 </div>
               )}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Chart */}
-        <TempChart unit={unit} />
-
-        {/* Service log: PM visits shared with Maintenance Compliance, plus repairs & install */}
-        <ServiceHistory unit={unit} loc={loc} />
+        <ServiceHistory unit={unit} />
       </div>
     </div>
   );
