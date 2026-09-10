@@ -11,7 +11,6 @@ export const metadata: Metadata = {
   title: "Freezer Temperature Monitor",
   description:
     "Monitor freezer temperatures, receive instant alerts, and keep every location operating within range.",
-  icons: { icon: "/bk-logo.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
