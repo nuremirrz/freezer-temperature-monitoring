@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MapPin, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
 import { authApi } from "@/lib/auth-client";
+import QimbyMark from "./QimbyMark";
 
 const NAV = [
   { href: "/locations", title: "Locations", icon: MapPin },
@@ -33,7 +33,7 @@ export default function Sidebar() {
     <>
       <aside className="z-20 order-last flex w-full shrink-0 items-center justify-around border-t border-line bg-panel px-2 py-1.5 md:order-first md:h-full md:w-16 md:flex-col md:justify-start md:border-t-0 md:border-r md:px-0 md:py-4">
         <Link href="/locations" className="mb-6 hidden md:block">
-          <Image src="/bk-logo.png" alt="Burger King" width={36} height={36} priority />
+          <QimbyMark size={36} />
         </Link>
 
         <nav className="flex flex-1 items-center justify-around gap-1 md:flex-none md:flex-col md:justify-start md:gap-2">

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react";
 import { shortAddress } from "@/lib/api";
 import { StatusIcon } from "./StatusIcon";
+import QimbyMark from "./QimbyMark";
 import { useLiveStore, sortLocations, SortMode } from "@/store/useLiveStore";
 
 const SORT_LABEL: Record<SortMode, string> = {
@@ -98,7 +98,7 @@ export default function LocationsList({
     >
       <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-5 md:pt-5">
         <div className="flex items-center gap-2.5">
-          <Image src="/bk-logo.png" alt="Burger King" width={28} height={28} className="md:hidden" priority />
+          <QimbyMark size={28} className="md:hidden" />
           <h1 className="text-lg font-semibold">Locations</h1>
           {connection === "polling" && (
             <span

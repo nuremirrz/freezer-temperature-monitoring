@@ -45,6 +45,7 @@ Next.js (App Router) · TypeScript · Tailwind CSS · zustand · recharts · rea
 - `src/data/` now only holds the weather helper, the seeded PRNG and the leftover demo generators used by the two screens still marked "Demo data".
 - Route protection: `src/proxy.ts` (Next 16 proxy) redirects visitors without a session cookie; the `(app)` layout and every read API validate the session against the database.
 - Unit images are placeholder SVGs in `public/units/` — swap for real photos any time.
+- The product mark lives in `src/components/QimbyMark.tsx` and `src/app/icon.svg`; both draw the same Q so the tab icon and the in-app logo match. `public/bk-logo.png` is kept but no longer referenced.
 
 ---
 

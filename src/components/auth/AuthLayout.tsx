@@ -1,4 +1,3 @@
-import Image from "next/image";
 import {
   Refrigerator,
   Snowflake,
@@ -11,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
 } from "lucide-react";
+import QimbyMark from "../QimbyMark";
 
 /** Decorative, faded dashboard preview used on the auth screens */
 function DashboardPreview() {
@@ -104,9 +104,8 @@ export default function AuthLayout({
       <div className="flex flex-1">
         {/* Left: brand + hero */}
         <div className="hidden flex-1 flex-col px-10 py-8 lg:flex xl:px-16">
-          <div className="flex items-center gap-4">
-            <Image src="/bk-logo.png" alt="Burger King" width={44} height={44} priority />
-            <span className="h-8 w-px bg-line" />
+          <div className="flex items-center gap-3">
+            <QimbyMark size={44} />
             <span>
               <span className="block text-lg leading-tight font-semibold">Qimby</span>
               <span className="block text-xs text-muted">Freezer Temperature Monitor</span>
@@ -135,8 +134,7 @@ export default function AuthLayout({
         <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-8 sm:px-6 md:py-10">
           {/* The brand column is off-screen below lg — keep the branding */}
           <div className="flex items-center gap-3 lg:hidden">
-            <Image src="/bk-logo.png" alt="Burger King" width={36} height={36} priority />
-            <span className="h-7 w-px bg-line" />
+            <QimbyMark size={36} />
             <span>
               <span className="block text-base leading-tight font-semibold">Qimby</span>
               <span className="block text-[11px] text-muted">Freezer Temperature Monitor</span>
