@@ -76,6 +76,7 @@ Useful scripts:
 | `npm run fixture:lht65n` | LHT65N fixture (`draginotst` → Teaneck **Reach-in Freezer**); `-- --at now --temp1 12 --ambient 71 --hum 55` to drive it |
 | `npm run fixture:lht65n -- --node-type LSN50v2` | Unknown decoder → lands in `UnknownUplink` with a reason |
 | `npm run offline-check` | One pass of the offline check (for cron; see below) |
+| `npm run telegram -- --token <t>` | Find the alert group's chat id and send a test message |
 | `npm run db:studio` | Browse the database |
 
 ### Data model (Prisma)
@@ -105,9 +106,18 @@ The offline check runs every minute inside the Next.js server (`src/instrumentat
 
 ### Notifications
 
-`notify()` in `src/lib/notify` has one implementation — a **Telegram bot** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Without those variables messages are logged to the console. Sent on open and on close, at most **once per alert per 30 minutes** (`lastNotifiedAt`) — note this also suppresses a "resolved" message when an alert closes within 30 minutes of opening; the server logs it instead.
+`notify()` in `src/lib/notify` has one implementation — a **Telegram bot** (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Without those variables messages are logged to the console. Sent on open and on close, at most **once per alert per 30 minutes** (`lastNotifiedAt`) — note this also suppresses a "resolved" message when an alert closes within 30 minutes of opening; the server logs it instead. When `APP_URL` is set, each message carries a link straight to the location screen.
 
 Example: `🔴 BK #1025 · Freezer - Back: 15.2°F (норма −10…10°F), 25 мин`
+
+**Setting the bot up.** Create the bot in Telegram with [@BotFather](https://t.me/BotFather) (`/newbot`), make a group for the alerts and add the bot to it. Then let the helper find the chat id:
+
+```bash
+npm run telegram -- --token <bot-token>              # lists the chats the bot can see
+npm run telegram -- --token <bot-token> --chat <id>  # sends a test message
+```
+
+The script only reads from Telegram and prints the two values; put them into the host environment yourself (on Render: the service → **Environment**). Group ids are negative, e.g. `-1001234567890`. Telegram keeps `getUpdates` history for a short while, so write the message in the group shortly before running the command.
 
 ### API for the frontend
 

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { publish } from "@/lib/events";
-import { notify } from "@/lib/notify";
+import { notify, locationUrl } from "@/lib/notify";
 import {
   evaluateTempReading,
   isSensorOffline,
@@ -104,6 +104,7 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
           rangeMinF: unit.rangeMinF,
           rangeMaxF: unit.rangeMaxF,
           durationMin: minutesBetween(openedAt, now),
+          url: locationUrl(unit.locationId),
         }),
       );
       return;
@@ -165,6 +166,7 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
             rangeMinF: unit.rangeMinF,
             rangeMaxF: unit.rangeMaxF,
             durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
+            url: locationUrl(unit.locationId),
           }),
         );
       } else {
@@ -241,6 +243,7 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
         unitNames: sensor.channels.map((c) => c.unit?.name ?? "").filter(Boolean),
         locationWide: wholeLocationWasDown && siblings.length > 0,
         silentMin: minutesBetween(silentSince, now),
+        url: locationUrl(sensor.locationId),
       }),
     );
   }
@@ -340,6 +343,7 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
             silentMin: sensor.lastSeenAt
               ? minutesBetween(sensor.lastSeenAt, now)
               : Math.round(offlineAfterSec(sensor.expectedIntervalSec) / 60),
+            url: locationUrl(sensor.locationId),
           }),
         );
       }

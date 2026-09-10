@@ -16,7 +16,8 @@
     "db:studio": "prisma studio",
     "fixture": "tsx scripts/send-fixture.mts",
     "offline-check": "tsx scripts/offline-check.mts",
-    "fixture:lht65n": "tsx scripts/send-fixture.mts --file fixtures/ttn-uplink-lht65n.json"
+    "fixture:lht65n": "tsx scripts/send-fixture.mts --file fixtures/ttn-uplink-lht65n.json",
+    "telegram": "tsx scripts/telegram-setup.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
