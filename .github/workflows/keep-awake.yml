@@ -1,0 +1,41 @@
+name: Keep the pilot awake
+
+# Render's free tier sleeps a service after 15 minutes without inbound HTTP and
+# takes ~50 s to wake. TTN does not retry a failed webhook, so an uplink that
+# arrives while the service is asleep is lost for good. Sensor traffic normally
+# keeps it up; this ping covers the gaps when the sensors themselves go quiet.
+#
+# GitHub only runs schedules on repositories with recent activity and may delay
+# a run under load, so treat this as a safety net rather than a guarantee.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /api/health
+        run: |
+          URL="${APP_URL:-https://qimby.onrender.com}/api/health"
+          echo "GET $URL"
+          # --max-time 90 covers a cold start; retry once in case the wake-up races us
+          body=$(curl -sS --max-time 90 --retry 1 --retry-delay 20 -w '\n%{http_code}' "$URL")
+          code=$(echo "$body" | tail -n1)
+          json=$(echo "$body" | sed '$d')
+          echo "HTTP $code"
+          echo "$json"
+          [ "$code" = "200" ] || { echo "::error::health check returned $code"; exit 1; }
+          echo "$json" | grep -q '"db":"ok"' || { echo "::error::database unreachable"; exit 1; }
+          if echo "$json" | grep -q '"status":"degraded"'; then
+            echo "::warning::no uplink from any sensor for over 20 minutes"
+          fi
+        env:
+          APP_URL: ${{ vars.APP_URL }}
