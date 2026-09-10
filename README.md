@@ -77,6 +77,7 @@ Useful scripts:
 | `npm run fixture:lht65n -- --node-type LSN50v2` | Unknown decoder → lands in `UnknownUplink` with a reason |
 | `npm run offline-check` | One pass of the offline check (for cron; see below) |
 | `npm run telegram -- --token <t>` | Find the alert group's chat id and send a test message |
+| `npm run sensors:import -- --dry-run` | Validate `data/sensors.csv` and preview the probe-to-equipment map |
 | `npm run db:studio` | Browse the database |
 
 ### Data model (Prisma)
@@ -222,12 +223,18 @@ Put the printed `https://…` origin into the TTN webhook Base URL. Uplinks land
 
 ### Wiring real sensors
 
-Teaneck carries the three real devices from the TTN test application:
+Two pieces of information are needed per probe, and they come from different places:
 
-| dev_eui | TTN device | Node_type | Interval | Wired to |
-| --- | --- | --- | --- | --- |
-| `A84041784362379C` | `draginotst2` | LTC2 | 5 min | ch1 → Freezer - Back, ch2 → Freezer - Front |
-| `A84041B54D625182` | `draginotst` | LHT65N | 2 min | ch1 → Reach-in Freezer |
-| `A8404113CA625184` | `dragino-irvine-1` | seeded as LHT65N (unconfirmed) | 5 min | ch1 → Walk-in Freezer |
+- **dev_eui** — printed on the sensor's label, and shown in TTN under **End devices → the device → DevEUI**.
+- **which equipment the probe sits in** — this exists nowhere until someone installs it. Whoever mounts the hardware has to write it down.
 
-`nodeType` is overwritten by every real uplink, so an unconfirmed type corrects itself on first contact. Every other sensor is a placeholder `FILL_ME_n` — replace the EUI in `prisma/seed.ts` (or the `Sensor` table) when the hardware is installed; until then those sensors are legitimately "offline". Anything TTN sends from an EUI we don't know ends up in `UnknownUplink` — a convenient list of what still needs mapping.
+`data/sensors.csv` is where that goes, one row per probe. Fill it in during installation and apply it:
+
+```bash
+npm run sensors:import -- --dry-run   # validate and preview, writes nothing
+npm run sensors:import                # apply
+```
+
+The importer refuses to write anything unless the whole file is valid: it checks the dev_eui format, that a channel is 1 or 2, that an LHT65N has no channel 2, that rows for one device agree on its location, and that every location and equipment name actually exists in the database. It is idempotent, so a corrected file can be applied again; readings already collected are never touched. `nodeType` is only seeded for a device that has never reported — the first real uplink is the authority.
+
+Anything TTN sends from an EUI we do not know lands in `UnknownUplink` with a reason, so a sensor that starts transmitting before it is mapped is visible rather than lost. The seed's `FILL_ME_*` placeholders stay until every real sensor is in; they legitimately read as "offline" in the meantime.

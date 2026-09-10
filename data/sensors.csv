@@ -1,0 +1,19 @@
+# Sensor-to-equipment map for the pilot. One row per probe.
+#
+# Fill this in during installation, then apply it:
+#   DATABASE_URL='<production url>' npm run sensors:import
+#
+# location   name of the restaurant exactly as it appears in the app, e.g. Burger King #1025
+# dev_eui    16 hex characters, from the sticker on the sensor or from TTN → End devices → DevEUI
+# device_id  the TTN device id (lowercase name in the console). Optional but useful.
+# node_type  LTC2 (two probes) or LHT65N (one probe). Corrected automatically by the first uplink.
+# interval   seconds between uplinks the device is configured with; 300 if unsure
+# channel    which probe on that sensor: 1 or 2. LHT65N only has 1.
+# unit       name of the equipment exactly as it appears in the app, e.g. Freezer - Back
+#            leave empty for a probe that is not connected to anything
+#
+location,dev_eui,device_id,node_type,interval,channel,unit
+Burger King #1025,A84041784362379C,draginotst2,LTC2,120,1,Freezer - Back
+Burger King #1025,A84041784362379C,draginotst2,LTC2,120,2,Freezer - Front
+Burger King #1025,A84041B54D625182,draginotst,LHT65N,120,1,Reach-in Freezer
+Burger King #1025,A8404113CA625184,dragino-irvine-1,LHT65N,300,1,Walk-in Freezer
