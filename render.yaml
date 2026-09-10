@@ -5,7 +5,7 @@ services:
     name: qimby
     runtime: node
     plan: free
-    region: oregon
+    region: ohio
     branch: main
     buildCommand: npm ci && npm run build
     # Migrations run on every deploy, before the server starts
