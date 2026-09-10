@@ -22,7 +22,7 @@ export default async function SettingsPage() {
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-2xl p-4 md:p-6">
           <h1 className="text-2xl font-semibold md:text-3xl">Settings</h1>
-          <p className="mt-1 text-sm text-muted">Your account on Freezer Temperature Monitor.</p>
+          <p className="mt-1 text-sm text-muted">Your account on Qimby.</p>
 
           <section className="mt-6 rounded-xl border border-line bg-panel p-5">
             <h2 className="text-sm font-semibold">Account</h2>

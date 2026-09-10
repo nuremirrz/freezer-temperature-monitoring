@@ -1,4 +1,4 @@
-# Freezer Temperature Monitor
+# Qimby — Freezer Temperature Monitor
 
 Cold-storage and HVAC temperature monitoring for Burger King restaurants in northern New Jersey. Sensor data arrives from The Things Network, is stored in PostgreSQL and evaluated for alerts; the UI reads it live over SSE.
 

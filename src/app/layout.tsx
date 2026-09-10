@@ -8,9 +8,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Freezer Temperature Monitor",
+  // Qimby is the product; freezer temperature monitoring is what this module does
+  title: { default: "Qimby", template: "%s · Qimby" },
   description:
     "Monitor freezer temperatures, receive instant alerts, and keep every location operating within range.",
+  applicationName: "Qimby",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

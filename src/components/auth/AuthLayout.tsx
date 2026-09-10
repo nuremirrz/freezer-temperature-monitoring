@@ -107,7 +107,10 @@ export default function AuthLayout({
           <div className="flex items-center gap-4">
             <Image src="/bk-logo.png" alt="Burger King" width={44} height={44} priority />
             <span className="h-8 w-px bg-line" />
-            <span className="text-lg font-semibold">Freezer Temperature Monitor</span>
+            <span>
+              <span className="block text-lg leading-tight font-semibold">Qimby</span>
+              <span className="block text-xs text-muted">Freezer Temperature Monitor</span>
+            </span>
           </div>
 
           <div className="mt-16 flex items-start gap-8">
@@ -134,7 +137,10 @@ export default function AuthLayout({
           <div className="flex items-center gap-3 lg:hidden">
             <Image src="/bk-logo.png" alt="Burger King" width={36} height={36} priority />
             <span className="h-7 w-px bg-line" />
-            <span className="text-base font-semibold">Freezer Temperature Monitor</span>
+            <span>
+              <span className="block text-base leading-tight font-semibold">Qimby</span>
+              <span className="block text-[11px] text-muted">Freezer Temperature Monitor</span>
+            </span>
           </div>
           <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-6 shadow-sm sm:p-8">
             {children}
