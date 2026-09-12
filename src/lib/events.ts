@@ -32,7 +32,17 @@ export interface AlertEvent {
   };
 }
 
-export type StreamEvent = ReadingEvent | AlertEvent;
+/** A unit's own settings changed (normal range, installation details) — statuses may shift. */
+export interface UnitEvent {
+  type: "unit";
+  data: {
+    unitId: string;
+    locationId: string;
+    state: "updated";
+  };
+}
+
+export type StreamEvent = ReadingEvent | AlertEvent | UnitEvent;
 
 const g = globalThis as unknown as { __qimbyBus?: EventEmitter };
 const bus = g.__qimbyBus ?? (g.__qimbyBus = new EventEmitter());
