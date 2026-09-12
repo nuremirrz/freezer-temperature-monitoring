@@ -18,7 +18,9 @@
     "offline-check": "tsx scripts/offline-check.mts",
     "fixture:lht65n": "tsx scripts/send-fixture.mts --file fixtures/ttn-uplink-lht65n.json",
     "telegram": "tsx scripts/telegram-setup.mts",
-    "sensors:import": "tsx scripts/import-sensors.mts"
+    "sensors:import": "tsx scripts/import-sensors.mts",
+    "norco:setup": "tsx scripts/setup-norco.mts",
+    "demo:purge": "tsx scripts/purge-demo.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

@@ -11,9 +11,23 @@
 # channel    which probe on that sensor: 1 or 2. LHT65N only has 1.
 # unit       name of the equipment exactly as it appears in the app, e.g. Freezer - Back
 #            leave empty for a probe that is not connected to anything
+# model      optional. Hardware model from the client's inventory, e.g. LHT65N-NE117
+# label      optional. Installer's label for the probe, e.g. AC1-kitchen
 #
-location,dev_eui,device_id,node_type,interval,channel,unit
+location,dev_eui,device_id,node_type,interval,channel,unit,model,label
 Burger King #1025,A84041784362379C,draginotst2,LTC2,120,1,Freezer - Back
 Burger King #1025,A84041784362379C,draginotst2,LTC2,120,2,Freezer - Front
 Burger King #1025,A84041B54D625182,draginotst,LHT65N,120,1,Reach-in Freezer
-Burger King #1025,A8404113CA625184,dragino-irvine-1,LHT65N,300,1,Walk-in Freezer
+
+# BK6816 Norco — 1666 Second St, Norco, CA 92860 (gateway a84041ffff2e3af4)
+# Source: "Qimby units list.xlsx", sheet Sensors.
+# A8404113CA625184 is the device previously registered here as dragino-irvine-1;
+# it was re-flashed as bk6816-wic and belongs to Norco now, not to Teaneck.
+# node_type is left blank for the two LHT65S units: that model is not one the
+# importer knows, and the first uplink fills the field in from the decoder.
+Burger King #6816,A8404113CA625184,bk6816-wic,LHT65N,1200,1,Walk-in Cooler,LHT65N-NE117,Walk-in Cooler
+Burger King #6816,A8404189F462517E,bk6816-norco-wif,LHT65N,1200,1,Walk-in Freezer,LHT65N-NE117,Walk-in Freezer
+Burger King #6816,A84041E3C4625185,bk6816-norco-ac1,LHT65N,300,1,AC1 - Kitchen,LHT65N-NE117,AC1-kitchen
+Burger King #6816,A84041A7145E2B76,bk6816-norco-ac2,,300,1,AC2 - Dining,LHT65S-NE117,AC2-dining
+Burger King #6816,A84041A3C562517C,bk6816-norco-ac3,LHT65N,300,1,AC3 - Dining,LHT65N-NE117,AC3-dining
+Burger King #6816,A84041DBBD5E2B78,bk6816-norco-ac4,,300,1,AC4 - Kitchen,LHT65S-NE117,AC4-kitchen
