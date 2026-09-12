@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { notificationHealth } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export async function GET() {
       lastUplinkAt: lastUplinkAt?.toISOString() ?? null,
       minutesSinceLastUplink: minutesSince,
       degradedAfterMinutes: DEGRADED_AFTER_MIN,
+      notifications: notificationHealth(),
       time: now.toISOString(),
     });
   } catch (err) {

@@ -1,4 +1,5 @@
 import { sendTelegram, telegramConfigured } from "./telegram";
+import { recordNotifyOk, recordNotifyFailure, notifyStatus, type NotifyStatus } from "./status";
 
 export type NotificationKind = "opened" | "resolved";
 
@@ -91,13 +92,25 @@ export function formatAlertMessage(n: AlertNotification): string {
     : `🟢 ${loc} · ${units}: датчик снова на связи${link}`;
 }
 
-/** Sends a notification; never throws — a broken Telegram must not break ingest. */
-export async function notify(n: AlertNotification): Promise<void> {
+/** Where notifications are going and whether they are landing — surfaced by /api/health. */
+export function notificationHealth(): NotifyStatus {
+  return notifyStatus(telegramConfigured() ? "telegram" : "console");
+}
+
+/**
+ * Sends a notification; never throws — a broken Telegram must not break ingest.
+ * Returns whether it actually went out, so the caller can decide what to record.
+ */
+export async function notify(n: AlertNotification): Promise<boolean> {
   const text = formatAlertMessage(n);
   try {
     await getNotifier().send(text);
+    recordNotifyOk();
+    return true;
   } catch (err) {
+    recordNotifyFailure(err);
     console.error("[notify] failed:", err instanceof Error ? err.message : err);
     console.log(`[notify] (unsent) ${text}`);
+    return false;
   }
 }

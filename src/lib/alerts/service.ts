@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { publish } from "@/lib/events";
-import { notify, locationUrl } from "@/lib/notify";
+import { notify, locationUrl, type AlertNotification } from "@/lib/notify";
 import {
   evaluateTempReading,
   isSensorOffline,
@@ -19,6 +19,27 @@ const minutesBetween = (a: Date, b: Date) => Math.max(0, Math.round((b.getTime()
 
 function fireAndForget(p: Promise<unknown>) {
   p.catch((err) => console.error("[alerts] background task failed:", err));
+}
+
+/**
+ * Sends a notification in the background and records it against the alerts only once it has
+ * actually gone out.
+ *
+ * Stamping `lastNotifiedAt` up front — which this used to do — arms the cooldown with
+ * messages nobody received. That is how a broken Telegram chat id went unnoticed for two
+ * days in September, and why the "back to normal" messages that followed were then
+ * suppressed as duplicates of alerts that had never arrived.
+ */
+function notifyAndStamp(alertIds: string[], n: AlertNotification): void {
+  fireAndForget(
+    notify(n).then(async (delivered) => {
+      if (!delivered || !alertIds.length) return;
+      await prisma.alert.updateMany({
+        where: { id: { in: alertIds } },
+        data: { lastNotifiedAt: new Date() },
+      });
+    }),
+  );
 }
 
 export interface NewReading {
@@ -78,7 +99,6 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
           type: "temp_out_of_range",
           openedAt,
           peakTempF: decision.peakTempF,
-          lastNotifiedAt: now,
         },
       });
       publish({
@@ -94,19 +114,17 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
           resolvedAt: null,
         },
       });
-      fireAndForget(
-        notify({
-          kind: "opened",
-          alertType: "temp_out_of_range",
-          locationName: unit.location.name,
-          unitName: unit.name,
-          tempF: reading.tempF,
-          rangeMinF: unit.rangeMinF,
-          rangeMaxF: unit.rangeMaxF,
-          durationMin: minutesBetween(openedAt, now),
-          url: locationUrl(unit.locationId),
-        }),
-      );
+      notifyAndStamp([alert.id], {
+        kind: "opened",
+        alertType: "temp_out_of_range",
+        locationName: unit.location.name,
+        unitName: unit.name,
+        tempF: reading.tempF,
+        rangeMinF: unit.rangeMinF,
+        rangeMaxF: unit.rangeMaxF,
+        durationMin: minutesBetween(openedAt, now),
+        url: locationUrl(unit.locationId),
+      });
       return;
     }
 
@@ -137,10 +155,7 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
       const shouldNotify = canNotify(openAlert.lastNotifiedAt, now);
       const resolved = await prisma.alert.update({
         where: { id: openAlert.id },
-        data: {
-          resolvedAt: reading.measuredAt,
-          ...(shouldNotify ? { lastNotifiedAt: now } : {}),
-        },
+        data: { resolvedAt: reading.measuredAt },
       });
       publish({
         type: "alert",
@@ -156,19 +171,17 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
         },
       });
       if (shouldNotify) {
-        fireAndForget(
-          notify({
-            kind: "resolved",
-            alertType: "temp_out_of_range",
-            locationName: unit.location.name,
-            unitName: unit.name,
-            tempF: reading.tempF,
-            rangeMinF: unit.rangeMinF,
-            rangeMaxF: unit.rangeMaxF,
-            durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
-            url: locationUrl(unit.locationId),
-          }),
-        );
+        notifyAndStamp([resolved.id], {
+          kind: "resolved",
+          alertType: "temp_out_of_range",
+          locationName: unit.location.name,
+          unitName: unit.name,
+          tempF: reading.tempF,
+          rangeMinF: unit.rangeMinF,
+          rangeMaxF: unit.rangeMaxF,
+          durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
+          url: locationUrl(unit.locationId),
+        });
       } else {
         console.log(`[alerts] resolved ${unit.name} @ ${unit.location.name} (notification suppressed by cooldown)`);
       }
@@ -207,7 +220,7 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
 
   await prisma.alert.updateMany({
     where: { id: { in: open.map((a) => a.id) } },
-    data: { resolvedAt: now, ...(shouldNotify ? { lastNotifiedAt: now } : {}) },
+    data: { resolvedAt: now },
   });
 
   for (const a of open) {
@@ -235,8 +248,9 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
     const wholeLocationWasDown = siblings.every((s) =>
       isSensorOffline(s.lastSeenAt, now, offlineAfterSec(s.expectedIntervalSec)),
     );
-    fireAndForget(
-      notify({
+    notifyAndStamp(
+      open.map((a) => a.id),
+      {
         kind: "resolved",
         alertType: "offline",
         locationName: sensor.location.name,
@@ -244,7 +258,7 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
         locationWide: wholeLocationWasDown && siblings.length > 0,
         silentMin: minutesBetween(silentSince, now),
         url: locationUrl(sensor.locationId),
-      }),
+      },
     );
   }
 }
@@ -309,7 +323,6 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
               unitId: u.id,
               type: "offline",
               openedAt: sensor.lastSeenAt ?? now,
-              lastNotifiedAt: now,
             },
           }),
         ),
@@ -333,8 +346,9 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
       }
 
       if (willNotify) {
-        fireAndForget(
-          notify({
+        notifyAndStamp(
+          created.map((a) => a.id),
+          {
             kind: "opened",
             alertType: "offline",
             locationName: sensor.location.name,
@@ -344,7 +358,7 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
               ? minutesBetween(sensor.lastSeenAt, now)
               : Math.round(offlineAfterSec(sensor.expectedIntervalSec) / 60),
             url: locationUrl(sensor.locationId),
-          }),
+          },
         );
       }
     } else {
