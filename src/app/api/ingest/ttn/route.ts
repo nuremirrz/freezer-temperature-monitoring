@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   const sensor = await prisma.sensor.findUnique({
     where: { devEui: u.devEui },
-    include: { channels: true },
+    include: { channels: { include: { unit: { select: { type: true } } } } },
   });
 
   if (!sensor) {
@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       ...(u.batStatus !== undefined ? { batStatus: u.batStatus } : {}),
       ...(u.ambientTempF !== undefined ? { ambientTempF: u.ambientTempF } : {}),
       ...(u.ambientHum !== undefined ? { ambientHum: u.ambientHum } : {}),
+      ...(u.channels[0] ? { probeTempF: u.channels[0].tempF } : {}),
       ...(u.gateway?.rssi !== undefined ? { lastRssi: Math.round(u.gateway.rssi) } : {}),
       ...(u.gateway?.snr !== undefined ? { lastSnr: u.gateway.snr } : {}),
     },
@@ -97,13 +98,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Readings — one per channel that is both reporting and wired to a unit
+  // Readings — one per channel that is both reporting and wired to a unit.
+  //
+  // An AC is the exception: the probe hangs in the supply duct, and the client judges an air
+  // conditioner by the room it is supposed to be cooling ("АС с дактов нерелевантное
+  // измерение"). So for those units the reading is the built-in air sensor, and the duct
+  // value is kept on the sensor as supply air.
   const inserted: { unitId: string; channel: number; tempF: number }[] = [];
   const unmapped: number[] = [];
+  const noRoomTemp: number[] = [];
   for (const ch of u.channels) {
     const mapping = sensor.channels.find((c) => c.channel === ch.channel);
     if (!mapping?.unitId) {
       unmapped.push(ch.channel);
+      continue;
+    }
+    const tempF = mapping.unit?.type === "ac" ? u.ambientTempF : ch.tempF;
+    if (tempF === undefined) {
+      // An AC whose uplink carried no room temperature: recording the duct value instead
+      // would quietly compare the wrong number against the unit's range.
+      noRoomTemp.push(ch.channel);
       continue;
     }
     const res = await prisma.reading.createMany({
@@ -112,13 +126,13 @@ export async function POST(req: NextRequest) {
           unitId: mapping.unitId,
           sensorId: sensor.id,
           channel: ch.channel,
-          tempF: ch.tempF,
+          tempF,
           measuredAt: u.receivedAt,
         },
       ],
       skipDuplicates: true,
     });
-    if (res.count > 0) inserted.push({ unitId: mapping.unitId, channel: ch.channel, tempF: ch.tempF });
+    if (res.count > 0) inserted.push({ unitId: mapping.unitId, channel: ch.channel, tempF });
   }
 
   // Alerts — after the writes. Cheap queries; notifications inside are fire-and-forget.
@@ -132,7 +146,7 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  return NextResponse.json(summary(u, inserted.length, unmapped), { status: 200 });
+  return NextResponse.json(summary(u, inserted.length, unmapped, noRoomTemp), { status: 200 });
 }
 
 /** The readings are already stored; alert evaluation must not turn a stored uplink into an error. */
@@ -144,16 +158,17 @@ async function safeAlerts(fn: () => Promise<void>) {
   }
 }
 
-function summary(u: ParsedUplink, readings: number, unmapped: number[]) {
+function summary(u: ParsedUplink, readings: number, unmapped: number[], noRoomTemp: number[] = []) {
   return {
     status: "ok",
     devEui: u.devEui,
     nodeType: u.nodeType ?? null,
     measuredAt: u.receivedAt.toISOString(),
     readings,
-    duplicates: u.channels.length - unmapped.length - readings,
+    duplicates: u.channels.length - unmapped.length - noRoomTemp.length - readings,
     skippedChannels: u.skippedChannels,
     unmappedChannels: unmapped,
+    ...(noRoomTemp.length ? { noRoomTemperature: noRoomTemp } : {}),
     ...(u.ambientTempF !== undefined || u.ambientHum !== undefined
       ? { ambient: { tempF: u.ambientTempF ?? null, hum: u.ambientHum ?? null } }
       : {}),

@@ -89,6 +89,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
             batStatus: channel.sensor.batStatus,
             ambientTempF: channel.sensor.ambientTempF,
             ambientHum: channel.sensor.ambientHum,
+            probeTempF: channel.sensor.probeTempF,
             lastRssi: channel.sensor.lastRssi,
             lastSnr: channel.sensor.lastSnr,
             lastSeenAt: channel.sensor.lastSeenAt?.toISOString() ?? null,

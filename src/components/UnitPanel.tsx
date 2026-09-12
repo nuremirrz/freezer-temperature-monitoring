@@ -124,7 +124,7 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
         <div className="mb-4">
           <div className="mb-2 text-sm font-semibold">Current State</div>
           <div className="grid grid-cols-2 gap-2.5 @3xl:grid-cols-4 md:gap-3">
-            <Tile label="Current Temp">
+            <Tile label={isAC ? "Room Temperature" : "Current Temp"}>
               <div
                 className={`mt-1 text-xl font-semibold tabular-nums @xs:text-2xl ${
                   outOfRange ? "text-alert" : ""
@@ -170,23 +170,24 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
           </div>
         </div>
 
-        {/* The AC probe sits in the supply air, so the room itself is read from the
-            sensor's built-in SHT — a separate block, per the BK6816 ТЗ. */}
+        {/* An AC is judged by the room, so Current Temp above already is the room air.
+            What is left worth showing is the humidity and what comes out of the vent. */}
         {isAC && sensor && (
           <div className="mb-4">
             <div className="mb-2 text-sm font-semibold">Room</div>
             <div className="grid grid-cols-2 gap-2.5 md:gap-3">
-              <Tile label="Room Temperature">
-                <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold tabular-nums @xs:text-2xl">
-                  <Wind size={16} className="shrink-0 text-muted" />
-                  {sensor.ambientTempF !== null ? formatTemp(sensor.ambientTempF) : "—"}
-                </div>
-              </Tile>
               <Tile label="Humidity">
                 <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold tabular-nums @xs:text-2xl">
                   <Droplets size={16} className="shrink-0 text-muted" />
                   {sensor.ambientHum !== null ? `${Math.round(sensor.ambientHum)}%` : "—"}
                 </div>
+              </Tile>
+              <Tile label="Supply Air">
+                <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold tabular-nums @xs:text-2xl">
+                  <Wind size={16} className="shrink-0 text-muted" />
+                  {sensor.probeTempF !== null ? formatTemp(sensor.probeTempF) : "—"}
+                </div>
+                <div className="mt-1 text-xs text-faint">from the duct probe</div>
               </Tile>
             </div>
           </div>

@@ -65,6 +65,8 @@ export interface SensorInfo {
   batStatus: string | null;
   ambientTempF: number | null;
   ambientHum: number | null;
+  /** Supply air from the duct probe — kept for AC units, which are judged by the room instead */
+  probeTempF: number | null;
   lastRssi: number | null;
   lastSnr: number | null;
   lastSeenAt: string | null;

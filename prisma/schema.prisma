@@ -146,9 +146,14 @@ model Sensor {
   batStatus           String?
   lastRssi            Int?
   lastSnr             Float?
-  /// LHT65N built-in air sensor (TempF_SHT / Hum_SHT). Not a unit reading — lives on the sensor.
+  /// LHT65N built-in air sensor (TempF_SHT / Hum_SHT) — the air around the device itself.
+  /// For an AC unit this *is* the measurement that counts: the client judges an air
+  /// conditioner by the room, not by the duct ("АС с дактов нерелевантное измерение").
   ambientTempF        Float?
   ambientHum          Float?
+  /// External probe (TempF_TMP117) — supply air for an AC. Kept even where it is not what
+  /// the unit is judged on, so no number the sensor reported is thrown away.
+  probeTempF          Float?
   /// How often the device is configured to uplink. Offline threshold = 3 × interval + 60 s.
   expectedIntervalSec Int       @default(300)
   lastSeenAt          DateTime? @db.Timestamptz(6)
