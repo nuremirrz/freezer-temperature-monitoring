@@ -52,6 +52,12 @@ export interface SensorInfo {
   id: string;
   devEui: string;
   nodeType: string | null;
+  /** Hardware model from the client's inventory, e.g. "LHT65N-NE117" */
+  model: string | null;
+  /** Installer's label for the probe, e.g. "AC1-kitchen" */
+  label: string | null;
+  /** Device id in The Things Network, e.g. "bk6816-norco-ac1" */
+  ttnDeviceId: string | null;
   channel: number;
   expectedIntervalSec: number;
   batteryV: number | null;
@@ -71,6 +77,7 @@ export interface UnitDetail {
   model: string | null;
   serial: string | null;
   year: number | null;
+  refrigerant: string | null;
   rangeMinF: number;
   rangeMaxF: number;
   status: UnitStatus;
@@ -143,11 +150,37 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface UnitPatch {
+  rangeMinF: number;
+  rangeMaxF: number;
+  refrigerant?: string | null;
+  year?: number | null;
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new ApiError(data.message ?? `Request failed (${res.status})`, res.status);
+  }
+  return (await res.json()) as T;
+}
+
 export const api = {
   locations: (signal?: AbortSignal) => get<LocationsResponse>("/api/locations", signal),
   location: (id: string, signal?: AbortSignal) => get<LocationDetail>(`/api/locations/${id}`, signal),
   readings: (unitId: string, range: ChartRange, signal?: AbortSignal) =>
     get<ReadingsResponse>(`/api/units/${unitId}/readings?range=${range}`, signal),
+  updateUnit: (unitId: string, body: UnitPatch) =>
+    patch<{ rangeMinF: number; rangeMaxF: number; refrigerant: string | null; year: number | null }>(
+      `/api/units/${unitId}`,
+      body,
+    ),
 };
 
 /* ------------------------------------------------------------------ */

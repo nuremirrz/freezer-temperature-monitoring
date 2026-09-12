@@ -13,13 +13,14 @@ import {
   BatteryMedium,
   Radio,
   Wind,
+  Droplets,
+  Tag,
 } from "lucide-react";
 import {
   LocationDetail,
   UnitDetail,
   UNIT_IMAGE,
   UNIT_TYPE_LABEL,
-  formatRange,
   formatTemp,
   isOutOfRange,
   formatDuration,
@@ -28,7 +29,7 @@ import {
 } from "@/lib/api";
 import { useLiveStore } from "@/store/useLiveStore";
 import TempChart from "./TempChart";
-import ServiceHistory from "./ServiceHistory";
+import RangeEditor from "./RangeEditor";
 
 function Tile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -68,6 +69,7 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
   const isOffline = unit.status === "offline";
   const sensor = unit.sensor;
   const outOfRange = unit.lastReading ? isOutOfRange(unit.lastReading.tempF, unit) : false;
+  const isAC = unit.type === "ac";
 
   return (
     <div className="@container z-10 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto bg-page">
@@ -94,16 +96,20 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
             </div>
             <dl className="space-y-1.5 text-sm">
               <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-muted">Model:</dt>
+                <dt className="w-24 shrink-0 text-muted">Model:</dt>
                 <dd className="font-medium">{unit.model ?? "—"}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-muted">Serial N:</dt>
+                <dt className="w-24 shrink-0 text-muted">Serial N:</dt>
                 <dd className="font-medium">{unit.serial ?? "—"}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-muted">Year:</dt>
+                <dt className="w-24 shrink-0 text-muted">Year:</dt>
                 <dd className="font-medium">{unit.year ?? "—"}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-24 shrink-0 text-muted">Refrigerant:</dt>
+                <dd className="font-medium">{unit.refrigerant ?? "—"}</dd>
               </div>
             </dl>
           </div>
@@ -145,9 +151,7 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
             </Tile>
 
             <Tile label="Normal Range">
-              <div className="mt-1.5 text-base font-semibold whitespace-nowrap tabular-nums @xs:text-lg @md:text-xl">
-                {formatRange(unit)}
-              </div>
+              <RangeEditor unit={unit} locationId={loc.id} />
             </Tile>
 
             <Tile label={unit.activeAlert ? "In this state" : "Last reading"}>
@@ -166,6 +170,28 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
           </div>
         </div>
 
+        {/* The AC probe sits in the supply air, so the room itself is read from the
+            sensor's built-in SHT — a separate block, per the BK6816 ТЗ. */}
+        {isAC && sensor && (
+          <div className="mb-4">
+            <div className="mb-2 text-sm font-semibold">Room</div>
+            <div className="grid grid-cols-2 gap-2.5 md:gap-3">
+              <Tile label="Room Temperature">
+                <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold tabular-nums @xs:text-2xl">
+                  <Wind size={16} className="shrink-0 text-muted" />
+                  {sensor.ambientTempF !== null ? formatTemp(sensor.ambientTempF) : "—"}
+                </div>
+              </Tile>
+              <Tile label="Humidity">
+                <div className="mt-1.5 flex items-center gap-1.5 text-xl font-semibold tabular-nums @xs:text-2xl">
+                  <Droplets size={16} className="shrink-0 text-muted" />
+                  {sensor.ambientHum !== null ? `${Math.round(sensor.ambientHum)}%` : "—"}
+                </div>
+              </Tile>
+            </div>
+          </div>
+        )}
+
         <TempChart unit={unit} timeZone={loc.timezone} />
 
         {/* Sensor health — real hardware telemetry, only when a sensor is mapped */}
@@ -177,9 +203,21 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
                 <Radio size={16} className="shrink-0 text-muted" />
                 <span className="text-muted">Device</span>
                 <span className="ml-auto font-medium tabular-nums">
-                  {sensor.devEui}
-                  {sensor.nodeType ? ` · ${sensor.nodeType}` : ""} · ch{sensor.channel}
+                  {sensor.devEui} · ch{sensor.channel}
                 </span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-muted">Sensor</span>
+                <span className="ml-auto font-medium">{sensor.model ?? sensor.nodeType ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-muted">TTN name</span>
+                <span className="ml-auto font-medium">{sensor.ttnDeviceId ?? "—"}</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Tag size={16} className="shrink-0 text-muted" />
+                <span className="text-muted">Label</span>
+                <span className="ml-auto font-medium">{sensor.label ?? "—"}</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <BatteryMedium size={16} className="shrink-0 text-muted" />
@@ -204,7 +242,7 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
                   {sensor.lastSeenAt ? formatLocalTime(sensor.lastSeenAt, loc.timezone) : "never"}
                 </span>
               </div>
-              {sensor.ambientTempF !== null && (
+              {!isAC && sensor.ambientTempF !== null && (
                 <div className="flex items-center gap-2.5">
                   <Wind size={16} className="shrink-0 text-muted" />
                   <span className="text-muted">Air around the device</span>
@@ -218,7 +256,6 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
           </div>
         )}
 
-        <ServiceHistory unit={unit} />
       </div>
     </div>
   );

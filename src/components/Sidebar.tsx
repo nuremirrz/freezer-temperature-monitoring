@@ -7,13 +7,16 @@ import { MapPin, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucid
 import { authApi } from "@/lib/auth-client";
 import QimbyMark from "./QimbyMark";
 
-const NAV = [
-  { href: "/locations", title: "Locations", icon: MapPin },
-  { href: "/maintenance", title: "Maintenance Compliance", icon: ClipboardCheck },
-  { href: "/settings", title: "Settings", icon: Settings },
-] as const;
+/**
+ * The BK6816 release ships the map only; everything else is visible but inert so the
+ * shape of the product still reads, per the ТЗ ("остальные иконки убрать или сделать
+ * неактивными"). Log Out stays.
+ */
+const NAV = [{ href: "/locations", title: "Locations", icon: MapPin }] as const;
 
 const COMING_SOON = [
+  { title: "Maintenance Compliance", icon: ClipboardCheck },
+  { title: "Settings", icon: Settings },
   { title: "Reports", icon: LineChart },
   { title: "Alerts", icon: Bell },
 ] as const;
