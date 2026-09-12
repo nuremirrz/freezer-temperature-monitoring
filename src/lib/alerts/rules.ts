@@ -3,8 +3,14 @@
  * The service layer (service.ts) loads state, calls these, and persists the result.
  */
 
-/** Alert opens only after this many consecutive out-of-range readings (a single spike is ignored). */
-export const CONSECUTIVE_OUT_OF_RANGE = 2;
+/**
+ * How long the temperature has to stay outside the range before an alert opens.
+ *
+ * Set by the client (13 Sep): "такая температура должна быть минимум час". A freezer in
+ * defrost, a door held open during a delivery, an AC cycling off — all of these leave the
+ * range for minutes at a time and none of them is a problem. An hour of it is.
+ */
+export const SUSTAINED_OUT_OF_RANGE_MIN = 60;
 /** Alert closes only once the reading is back inside the range by this margin. */
 export const HYSTERESIS_F = 2;
 /** Uplink interval Dragino devices ship with; each Sensor row can override it. */
@@ -67,8 +73,14 @@ export type TempDecision =
 export interface TempEvaluation extends TempRange {
   /** The reading that just arrived */
   current: number;
-  /** The previous reading for the same unit, if any */
-  previous: number | null;
+  /**
+   * Minutes the temperature has been continuously outside the range, counting from the first
+   * bad reading of the current run up to this one. 0 while in range, and 0 on the first bad
+   * reading — one spike can never open an alert, whatever the interval.
+   */
+  outOfRangeForMin: number;
+  /** The most extreme reading of the current out-of-range run, this one included. */
+  runPeakTempF: number | null;
   /** The currently open temp alert, if any */
   openAlert: { peakTempF: number | null } | null;
 }
@@ -80,10 +92,8 @@ export function evaluateTempReading(e: TempEvaluation): TempDecision {
     return { action: "update", peakTempF: peakOf(prevPeak, e.current, e) };
   }
 
-  const currentOut = isOutOfRange(e.current, e);
-  const previousOut = e.previous !== null && isOutOfRange(e.previous, e);
-  if (currentOut && previousOut) {
-    return { action: "open", peakTempF: peakOf(e.previous as number, e.current, e) };
+  if (isOutOfRange(e.current, e) && e.outOfRangeForMin >= SUSTAINED_OUT_OF_RANGE_MIN) {
+    return { action: "open", peakTempF: e.runPeakTempF ?? e.current };
   }
   return { action: "none" };
 }

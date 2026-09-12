@@ -3,6 +3,8 @@ import { publish } from "@/lib/events";
 import { notify, locationUrl, type AlertNotification } from "@/lib/notify";
 import {
   evaluateTempReading,
+  isOutOfRange,
+  peakOf,
   isSensorOffline,
   canNotify,
   fullyOfflineLocations,
@@ -42,6 +44,42 @@ function notifyAndStamp(alertIds: string[], n: AlertNotification): void {
   );
 }
 
+/**
+ * The current unbroken run of out-of-range readings for a unit: when it started, and the
+ * reading that strayed furthest. The run is everything recorded after the last reading that
+ * was inside the range — so a single good reading in the middle resets the clock, which is
+ * what "temperature held for an hour" has to mean.
+ */
+async function outOfRangeRun(
+  unit: { id: string; rangeMinF: number; rangeMaxF: number },
+  reading: NewReading,
+): Promise<{ startedAt: Date; peakTempF: number } | null> {
+  const lastGood = await prisma.reading.findFirst({
+    where: {
+      unitId: unit.id,
+      measuredAt: { lt: reading.measuredAt },
+      tempF: { gte: unit.rangeMinF, lte: unit.rangeMaxF },
+    },
+    orderBy: { measuredAt: "desc" },
+    select: { measuredAt: true },
+  });
+
+  const agg = await prisma.reading.aggregate({
+    where: {
+      unitId: unit.id,
+      measuredAt: { lte: reading.measuredAt, ...(lastGood ? { gt: lastGood.measuredAt } : {}) },
+    },
+    _min: { measuredAt: true, tempF: true },
+    _max: { tempF: true },
+  });
+
+  const startedAt = agg._min.measuredAt;
+  if (!startedAt) return null;
+  const lo = agg._min.tempF ?? reading.tempF;
+  const hi = agg._max.tempF ?? reading.tempF;
+  return { startedAt, peakTempF: peakOf(lo, hi, unit) };
+}
+
 export interface NewReading {
   unitId: string;
   sensorId: string;
@@ -58,22 +96,19 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
   });
   if (!unit) return;
 
-  const [previous, openAlert] = await Promise.all([
-    prisma.reading.findFirst({
-      where: { unitId: unit.id, measuredAt: { lt: reading.measuredAt } },
-      orderBy: { measuredAt: "desc" },
-      select: { tempF: true, measuredAt: true },
-    }),
-    prisma.alert.findFirst({
-      where: { unitId: unit.id, type: "temp_out_of_range", resolvedAt: null },
-    }),
-  ]);
+  const openAlert = await prisma.alert.findFirst({
+    where: { unitId: unit.id, type: "temp_out_of_range", resolvedAt: null },
+  });
+
+  // Only worth looking up the run when a new alert could open from it
+  const run = openAlert || !isOutOfRange(reading.tempF, unit) ? null : await outOfRangeRun(unit, reading);
 
   const decision = evaluateTempReading({
     rangeMinF: unit.rangeMinF,
     rangeMaxF: unit.rangeMaxF,
     current: reading.tempF,
-    previous: previous?.tempF ?? null,
+    outOfRangeForMin: run ? (reading.measuredAt.getTime() - run.startedAt.getTime()) / 60_000 : 0,
+    runPeakTempF: run?.peakTempF ?? null,
     openAlert: openAlert ? { peakTempF: openAlert.peakTempF } : null,
   });
 
@@ -91,8 +126,8 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
 
   switch (decision.action) {
     case "open": {
-      // The alert started with the first of the two bad readings
-      const openedAt = previous?.measuredAt ?? reading.measuredAt;
+      // Dated from the first bad reading, so Duration shows the whole spell, not the last hour of it
+      const openedAt = run?.startedAt ?? reading.measuredAt;
       const alert = await prisma.alert.create({
         data: {
           unitId: unit.id,
