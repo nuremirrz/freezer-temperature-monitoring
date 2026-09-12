@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 import { readFileSync } from "node:fs";
 import { prisma } from "../src/lib/db";
 
@@ -20,6 +20,8 @@ interface Row {
   interval: number;
   channel: number;
   unit: string;
+  model: string;
+  label: string;
 }
 
 const arg = (name: string) => {
@@ -41,10 +43,10 @@ text.split(/\r?\n/).forEach((raw, i) => {
   if (cells[0].toLowerCase() === "location") return; // header
 
   if (cells.length < 7) {
-    problems.push(`line ${line}: expected 7 columns, got ${cells.length}`);
+    problems.push(`line ${line}: expected at least 7 columns, got ${cells.length}`);
     return;
   }
-  const [location, devEui, deviceId, nodeType, interval, channel, unit] = cells;
+  const [location, devEui, deviceId, nodeType, interval, channel, unit, model = "", label = ""] = cells;
 
   if (!/^[0-9A-Fa-f]{16}$/.test(devEui)) problems.push(`line ${line}: dev_eui "${devEui}" is not 16 hex characters`);
   if (!["1", "2"].includes(channel)) problems.push(`line ${line}: channel must be 1 or 2, got "${channel}"`);
@@ -62,6 +64,8 @@ text.split(/\r?\n/).forEach((raw, i) => {
     interval: Number(interval) || 300,
     channel: Number(channel),
     unit,
+    model,
+    label,
   });
 });
 
@@ -73,6 +77,8 @@ for (const [eui, group] of byEui) {
   if (locations.size > 1) problems.push(`${eui}: rows disagree on the location (${[...locations].join(" / ")})`);
   const channels = group.map((r) => r.channel);
   if (new Set(channels).size !== channels.length) problems.push(`${eui}: the same channel appears twice`);
+  const models = new Set(group.map((r) => r.model).filter(Boolean));
+  if (models.size > 1) problems.push(`${eui}: rows disagree on the model (${[...models].join(" / ")})`);
 }
 
 // Names must match what is already in the database
@@ -118,6 +124,8 @@ for (const [eui, group] of byEui) {
       locationId: loc.id,
       ttnDeviceId: group[0].deviceId || null,
       expectedIntervalSec: group[0].interval,
+      ...(group[0].model ? { model: group[0].model } : {}),
+      ...(group[0].label ? { label: group[0].label } : {}),
       // nodeType is owned by the device: only seed it when we have never heard from it
       ...(existing?.nodeType ? {} : { nodeType: group[0].nodeType || null }),
     },
@@ -125,6 +133,8 @@ for (const [eui, group] of byEui) {
       devEui: eui,
       ttnDeviceId: group[0].deviceId || null,
       nodeType: group[0].nodeType || null,
+      model: group[0].model || null,
+      label: group[0].label || null,
       expectedIntervalSec: group[0].interval,
       locationId: loc.id,
     },

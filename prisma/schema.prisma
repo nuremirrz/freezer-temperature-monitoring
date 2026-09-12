@@ -104,17 +104,19 @@ model Gateway {
 }
 
 model Unit {
-  id         String   @id @default(cuid())
-  locationId String
-  location   Location @relation(fields: [locationId], references: [id])
-  type       UnitType
-  name       String // "Freezer - Back"
-  model      String?
-  serial     String?
-  year       Int?
+  id          String   @id @default(cuid())
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id])
+  type        UnitType
+  name        String // "Freezer - Back"
+  model       String?
+  serial      String?
+  year        Int?
+  /// Refrigerant type, e.g. "R-448A". Entered by the technician at installation.
+  refrigerant String?
   // Normal range per unit; defaults come from the type, but can be overridden
-  rangeMinF  Float
-  rangeMaxF  Float
+  rangeMinF   Float
+  rangeMaxF   Float
 
   channels SensorChannel[]
   readings Reading[]
@@ -131,6 +133,11 @@ model Sensor {
   /// Dragino Node_type from the decoded payload: "LTC2" (two probes) or "LHT65N" (one probe + ambient).
   /// Updated from every uplink — the device is the source of truth.
   nodeType            String?
+  /// Hardware model as written on the client's inventory, e.g. "LHT65N-NE117". Finer than
+  /// nodeType, which is only what the decoder reports ("LHT65N" for both the N and S variants).
+  model               String?
+  /// Installer's label for the probe, e.g. "AC1-kitchen".
+  label               String?
   locationId          String
   location            Location  @relation(fields: [locationId], references: [id])
   batteryV            Float?
