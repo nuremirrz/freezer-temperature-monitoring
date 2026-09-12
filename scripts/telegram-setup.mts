@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 
 /**
  * Finds the chat id for the alert bot and sends a test message.

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env";
 import { runOfflineCheck } from "../src/lib/alerts/service";
 import { prisma } from "../src/lib/db";
 
