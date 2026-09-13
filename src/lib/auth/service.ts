@@ -129,8 +129,16 @@ export async function requestPasswordReset(email: string, base: string): Promise
   return { devResetUrl: devLink(link) };
 }
 
-/** Sets a new password, signs the user out everywhere. A reset link also proves e-mail ownership. */
-export async function resetPassword(raw: string, password: string): Promise<AuthResult> {
+/**
+ * Sets a new password and signs the owner in right here.
+ *
+ * Following a reset link already proves control of the account, so asking for the e-mail and
+ * the password that was just chosen adds nothing. It also makes an invite work for someone
+ * who was only handed the link: they never have to be told which address the account is under.
+ * Every other session still dies — if the reset was prompted by a leak, the intruder's tab
+ * must not survive it.
+ */
+export async function resetPassword(raw: string, password: string, meta: SessionMeta = {}): Promise<AuthResult> {
   const token = await prisma.authToken.findUnique({ where: { id: hashToken(raw) } });
   if (!token || token.type !== "password_reset" || token.usedAt || token.expiresAt.getTime() <= Date.now()) {
     return fail("invalid_token", "This reset link is invalid or has expired", 400);
@@ -145,6 +153,8 @@ export async function resetPassword(raw: string, password: string): Promise<Auth
     }),
     prisma.session.deleteMany({ where: { userId: token.userId } }),
   ]);
+  // After the transaction, so the sweep above cannot take this one with it
+  await createSession(token.userId, meta);
   return { ok: true, data: undefined };
 }
 

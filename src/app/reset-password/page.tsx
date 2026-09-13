@@ -47,13 +47,17 @@ function ResetForm() {
       setFormError(res.error.message);
       return;
     }
-    router.push("/login?reset=1");
+    // The reset signs them in, so there is no login form left to visit
+    router.push("/locations");
+    router.refresh();
   };
 
   return (
     <>
       <h2 className="text-center text-2xl font-semibold">Set a new password</h2>
-      <p className="mt-1 mb-6 text-center text-sm text-muted">You&apos;ll be signed out everywhere else</p>
+      <p className="mt-1 mb-6 text-center text-sm text-muted">
+        You&apos;ll be signed in here, and signed out everywhere else
+      </p>
 
       {formError && (
         <div className="mb-4 rounded-lg bg-alert-soft px-3 py-2.5 text-sm text-alert">
