@@ -10,6 +10,7 @@ import { hashPassword } from "../src/lib/auth/password";
  *   npm run access:grant -- --email me@qimby.app --role admin
  *   npm run access:grant -- --email ceo@example.com --revoke "Burger King #6816"
  *   npm run access:grant -- --email ceo@example.com --list
+ *   npm run access:grant -- --email old@example.com --delete
  *
  * The password never appears on the command line — it comes from ACCOUNT_PASSWORD, so it
  * stays out of the shell history, and it is hashed before it reaches the database.
@@ -33,6 +34,7 @@ const name = flag("name");
 const locations = all("location");
 const revoke = all("revoke");
 const listOnly = argv.includes("--list");
+const deleteAccount = argv.includes("--delete");
 const password = process.env.ACCOUNT_PASSWORD;
 
 if (!email) {
@@ -60,6 +62,21 @@ if (missing.length) {
 const idOf = (n: string) => found.find((l) => l.name === n)!.id;
 
 let user = await prisma.user.findUnique({ where: { email } });
+
+if (deleteAccount) {
+  if (!user) {
+    console.log(`no account for ${email} — nothing to delete`);
+    await prisma.$disconnect();
+    process.exit(0);
+  }
+  // Sessions, tokens and grants cascade from the user. Readings and alerts do not reference
+  // a user at all, so nothing measured is lost with the account — as the task requires.
+  await prisma.user.delete({ where: { id: user.id } });
+  console.log(`✗ deleted ${email} (was ${user.role}, ${user.emailVerifiedAt ? "confirmed" : "unconfirmed"})`);
+  console.log("  sensor data is untouched — no reading or alert belongs to a user");
+  await prisma.$disconnect();
+  process.exit(0);
+}
 
 if (!user) {
   if (listOnly) {
