@@ -2,15 +2,19 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { unauthorized } from "@/lib/auth/http";
+import { visibleLocationIds, locationWhere } from "@/lib/auth/access";
 import { deriveUnitStatus, deriveLocationStatus, countStatuses, UnitStatus } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/locations — every location with a status summary derived from its units. */
 export async function GET() {
-  if (!(await getSession())) return unauthorized();
+  const session = await getSession();
+  if (!session) return unauthorized();
+  const visible = await visibleLocationIds(session);
   const [locations, latest] = await Promise.all([
     prisma.location.findMany({
+      where: locationWhere(visible),
       orderBy: { name: "asc" },
       include: {
         units: {

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { subscribe } from "@/lib/events";
 import { getSession } from "@/lib/auth/session";
 import { unauthorized } from "@/lib/auth/http";
+import { visibleLocationIds, canSee } from "@/lib/auth/access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,14 @@ const HEARTBEAT_MS = 25_000;
  * Clients that can't hold SSE should poll /api/locations every 60 s instead.
  */
 export async function GET(req: NextRequest) {
-  if (!(await getSession())) return unauthorized();
+  const session = await getSession();
+  if (!session) return unauthorized();
+
+  // Resolved once per connection. Filtering here is what actually keeps one client's
+  // readings away from another: the screens hide other restaurants, but without this the
+  // stream would still push their every reading into the browser.
+  const visible = await visibleLocationIds(session);
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -34,7 +42,10 @@ export async function GET(req: NextRequest) {
 
       send("hello", { now: new Date().toISOString(), heartbeatMs: HEARTBEAT_MS });
 
-      const unsubscribe = subscribe((ev) => send(ev.type, ev.data));
+      const unsubscribe = subscribe((ev) => {
+        if (!canSee(visible, ev.data.locationId)) return;
+        send(ev.type, ev.data);
+      });
       const heartbeat = setInterval(() => write(`: ping ${Date.now()}\n\n`), HEARTBEAT_MS);
 
       const close = () => {

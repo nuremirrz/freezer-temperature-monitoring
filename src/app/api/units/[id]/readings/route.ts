@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { unauthorized } from "@/lib/auth/http";
+import { visibleLocationIds, canSee } from "@/lib/auth/access";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,8 @@ interface BucketRow {
 
 /** GET /api/units/[id]/readings?range=24h|7d|30d */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await getSession())) return unauthorized();
+  const session = await getSession();
+  if (!session) return unauthorized();
   const { id } = await ctx.params;
   const rangeParam = (req.nextUrl.searchParams.get("range") ?? "24h") as Range;
   const cfg = RANGES[rangeParam];
@@ -34,9 +36,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const unit = await prisma.unit.findUnique({
     where: { id },
-    select: { id: true, name: true, rangeMinF: true, rangeMaxF: true },
+    select: { id: true, name: true, rangeMinF: true, rangeMaxF: true, locationId: true },
   });
-  if (!unit) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const visible = await visibleLocationIds(session);
+  if (!unit || !canSee(visible, unit.locationId)) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
 
   const since = new Date(Date.now() - cfg.hours * 3_600_000);
 

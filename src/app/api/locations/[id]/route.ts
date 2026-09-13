@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { unauthorized } from "@/lib/auth/http";
+import { visibleLocationIds, canSee } from "@/lib/auth/access";
 import { deriveUnitStatus, deriveLocationStatus } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -14,8 +15,13 @@ interface LatestRow {
 
 /** GET /api/locations/[id] — location + units with last reading, status and active alert. */
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await getSession())) return unauthorized();
+  const session = await getSession();
+  if (!session) return unauthorized();
   const { id } = await ctx.params;
+
+  // 404 rather than 403: a restaurant nobody granted you should not even confirm it exists.
+  const visible = await visibleLocationIds(session);
+  if (!canSee(visible, id)) return NextResponse.json({ message: "Not found" }, { status: 404 });
 
   const loc = await prisma.location.findUnique({
     where: { id },

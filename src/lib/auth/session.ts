@@ -13,7 +13,7 @@ export interface SessionUser {
   id: string;
   email: string;
   name: string | null;
-  role: "admin";
+  role: "admin" | "client";
   emailVerifiedAt: Date | null;
   createdAt: Date;
 }

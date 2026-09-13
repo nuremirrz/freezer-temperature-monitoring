@@ -27,8 +27,13 @@ const patchSchema = z
 
 /** PATCH /api/units/[id] — edit the unit's normal range and installation details. */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await getSession())) return unauthorized();
+  const session = await getSession();
+  if (!session) return unauthorized();
   if (!sameOrigin(req)) return NextResponse.json({ message: "Bad origin" }, { status: 403 });
+  // Ranges are an engineering judgement about the equipment, not the restaurant's to set.
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ message: "Only Qimby staff can change a unit's settings" }, { status: 403 });
+  }
 
   const { id } = await ctx.params;
   const parsed = await parseBody(req, patchSchema);
