@@ -1,6 +1,8 @@
 import "./load-env";
 import { prisma } from "../src/lib/db";
 import { hashPassword } from "../src/lib/auth/password";
+import { generateToken } from "../src/lib/auth/tokens";
+import { randomBytes } from "node:crypto";
 
 /**
  * Creates or updates an account and grants it locations.
@@ -11,6 +13,12 @@ import { hashPassword } from "../src/lib/auth/password";
  *   npm run access:grant -- --email ceo@example.com --revoke "Burger King #6816"
  *   npm run access:grant -- --email ceo@example.com --list
  *   npm run access:grant -- --email old@example.com --delete
+ *   npm run access:grant -- --email ceo@example.com --location "…" --invite
+ *
+ * --invite is the way to hand an account to someone else. It creates the account with no
+ * usable password and prints a single-use link that lets them choose their own, so the
+ * password is never typed by whoever sets the account up, never travels through a chat, and
+ * is not known to anyone but its owner. The link is good for seven days.
  *
  * The password never appears on the command line — it comes from ACCOUNT_PASSWORD, so it
  * stays out of the shell history, and it is hashed before it reaches the database.
@@ -35,6 +43,8 @@ const locations = all("location");
 const revoke = all("revoke");
 const listOnly = argv.includes("--list");
 const deleteAccount = argv.includes("--delete");
+const invite = argv.includes("--invite");
+const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
 const password = process.env.ACCOUNT_PASSWORD;
 
 if (!email) {
@@ -84,12 +94,12 @@ if (!user) {
     await prisma.$disconnect();
     process.exit(1);
   }
-  if (!password) {
-    console.error("ACCOUNT_PASSWORD is not set — needed to create a new account");
+  if (!invite && !password) {
+    console.error("ACCOUNT_PASSWORD is not set — needed to create a new account (or pass --invite)");
     await prisma.$disconnect();
     process.exit(1);
   }
-  if (password.length < 8) {
+  if (!invite && password!.length < 8) {
     console.error("ACCOUNT_PASSWORD must be at least 8 characters");
     await prisma.$disconnect();
     process.exit(1);
@@ -99,7 +109,9 @@ if (!user) {
       email,
       name: name ?? null,
       role,
-      passwordHash: await hashPassword(password),
+      // An invited account gets an unguessable hash nobody holds the input to: no password
+      // works until the invitee sets one through the link.
+      passwordHash: await hashPassword(password ?? randomBytes(32).toString("base64url")),
       emailVerifiedAt: new Date(),
     },
   });
@@ -133,6 +145,21 @@ for (const n of locations) {
 for (const n of revoke) {
   await prisma.locationAccess.deleteMany({ where: { userId: user.id, locationId: idOf(n) } });
   console.log(`  − ${n}`);
+}
+
+if (invite) {
+  // A fresh link supersedes any unused one, same as the app's own reset flow
+  await prisma.authToken.updateMany({
+    where: { userId: user.id, type: "password_reset", usedAt: null },
+    data: { usedAt: new Date() },
+  });
+  const { raw, hash } = generateToken();
+  await prisma.authToken.create({
+    data: { id: hash, userId: user.id, type: "password_reset", expiresAt: new Date(Date.now() + INVITE_TTL_MS) },
+  });
+  const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
+  console.log(`\n  Single-use link, valid 7 days — send it to ${email} and let them set their own password:`);
+  console.log(`  ${base}/reset-password?token=${raw}`);
 }
 
 const granted = await prisma.locationAccess.findMany({
