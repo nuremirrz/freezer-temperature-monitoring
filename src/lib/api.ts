@@ -117,11 +117,21 @@ export interface LocationDetail {
   units: UnitDetail[];
 }
 
-export type ChartRange = "24h" | "7d" | "30d";
+export type ChartRange = "1h" | "1d" | "1w" | "1m";
+
+export const CHART_RANGES: { key: ChartRange; label: string }[] = [
+  { key: "1h", label: "1H" },
+  { key: "1d", label: "1D" },
+  { key: "1w", label: "1W" },
+  { key: "1m", label: "1M" },
+];
 
 export interface ReadingPoint {
   t: string;
+  /** What the unit is judged by: the probe for cold storage, the room for an AC */
   tempF: number;
+  /** The duct probe, on AC units only */
+  probeTempF?: number;
   min?: number;
   max?: number;
   n?: number;
@@ -129,10 +139,15 @@ export interface ReadingPoint {
 
 export interface ReadingsResponse {
   unitId: string;
+  type: UnitType;
   range: ChartRange;
   bucketMinutes: number | null;
   rangeMinF: number;
   rangeMaxF: number;
+  alertMinF: number | null;
+  alertMaxF: number | null;
+  probeMinF: number | null;
+  probeMaxF: number | null;
   points: ReadingPoint[];
 }
 
