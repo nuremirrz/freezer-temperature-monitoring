@@ -137,9 +137,20 @@ model Unit {
   year        Int?
   /// Refrigerant type, e.g. "R-448A". Entered by the technician at installation.
   refrigerant String?
-  // Normal range per unit; defaults come from the type, but can be overridden
+  /// The normal band: what the table calls "Normal Range" and the chart paints green.
+  /// Leaving it colours the reading, but on its own raises nothing.
   rangeMinF   Float
   rangeMaxF   Float
+  /// Where trouble actually starts. A walk-in freezer is normal to 10 °F and alarming from
+  /// 20 °F — it spends most of its day in between, defrosting and having its door opened, and
+  /// alerting on all of that would be noise. Crossing these, and staying across for an hour,
+  /// is what opens an alert. Null falls back to the normal band.
+  alertMinF   Float?
+  alertMaxF   Float?
+  /// An AC is judged by the room, but its duct probe has a normal band of its own worth
+  /// drawing on the chart. It does not decide the unit's status.
+  probeMinF   Float?
+  probeMaxF   Float?
 
   channels SensorChannel[]
   readings Reading[]
@@ -207,7 +218,11 @@ model Reading {
   sensorId   String
   sensor     Sensor   @relation(fields: [sensorId], references: [id])
   channel    Int
+  /// What the unit is judged by: the probe for cold storage, the room for an AC.
   tempF      Float
+  /// The other number the same uplink carried, kept so both lines of an AC chart have a
+  /// history. For an AC that is the duct probe; for cold storage there is nothing to add.
+  probeTempF Float?
   measuredAt DateTime @db.Timestamptz(6) // uplink_message.received_at
 
   // TTN may deliver the same uplink twice — the same probe can't measure twice at the same instant

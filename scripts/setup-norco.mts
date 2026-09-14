@@ -33,27 +33,40 @@ const LOCATION = {
 const GATEWAY = { ttnGatewayId: "a84041ffff2e3af4", eui: "A84041FFFF2E3AF4" };
 
 /**
- * Starting ranges. The client has not signed these off yet, and the ТЗ says each unit is
- * set by hand in the UI, so these are only sensible defaults to start from:
- *  - cooler/freezer: standard food-service holding temperatures;
- *  - AC: measured supply air on 2026-09-12 was 45.6–47.8 °F across the four units.
+ * Thresholds as the client set them (Trello "Пофиксить все Normal range", 13 Sep, and the
+ * chart spec in the ТЗ of the same day).
+ *
+ * Two bands per unit, because they answer different questions. `range` is the normal band —
+ * the table's "Normal Range" and the chart's green zone. `alert` is where someone gets woken
+ * up. A walk-in freezer is normal to 10 °F and alarming from 20 °F, and over the last day it
+ * was above 10 °F ninety per cent of the time: defrost cycles, deliveries, an open door.
+ * Alerting on all of that would train everyone to ignore the alerts.
+ *
+ * The low ends of the alert bands are deliberately out of reach. For refrigeration the danger
+ * is warmth; the client named only upper thresholds. The cooler's 32 °F "Freeze Risk" line is
+ * drawn on the chart but does not raise anything until someone asks for it.
  */
 interface UnitSeed {
   name: string;
   type: UnitType;
   rangeMinF: number;
   rangeMaxF: number;
+  alertMinF: number;
+  alertMaxF: number;
+  /** AC only: the duct probe's own normal band, drawn on the chart */
+  probeMinF?: number;
+  probeMaxF?: number;
   model?: string;
   serial?: string;
 }
 
 const UNITS: UnitSeed[] = [
-  { name: "Walk-in Cooler", type: "walk_in_cooler", rangeMinF: 35, rangeMaxF: 41 },
-  { name: "Walk-in Freezer", type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10 },
-  { name: "AC1 - Kitchen", type: "ac", rangeMinF: 45, rangeMaxF: 50, model: "48FCFM07A2A5A6U0A0", serial: "2419C85938" },
-  { name: "AC2 - Dining", type: "ac", rangeMinF: 45, rangeMaxF: 50, model: "48KCNA06A2A5B6U0A0", serial: "2419C85977" },
-  { name: "AC3 - Dining", type: "ac", rangeMinF: 45, rangeMaxF: 50, model: "48FCFM07A2A5A6U0A0", serial: "2419C85937" },
-  { name: "AC4 - Kitchen", type: "ac", rangeMinF: 45, rangeMaxF: 50, model: "48KCNA06A2A5B6U0A0", serial: "2419C85976" },
+  { name: "Walk-in Cooler", type: "walk_in_cooler", rangeMinF: 32, rangeMaxF: 40, alertMinF: 20, alertMaxF: 50 },
+  { name: "Walk-in Freezer", type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 },
+  { name: "AC1 - Kitchen", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48FCFM07A2A5A6U0A0", serial: "2419C85938" },
+  { name: "AC2 - Dining", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48KCNA06A2A5B6U0A0", serial: "2419C85977" },
+  { name: "AC3 - Dining", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48FCFM07A2A5A6U0A0", serial: "2419C85937" },
+  { name: "AC4 - Kitchen", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48KCNA06A2A5B6U0A0", serial: "2419C85976" },
 ];
 
 const location = await prisma.location.upsert({
@@ -70,31 +83,39 @@ await prisma.gateway.upsert({
 });
 console.log(`✓ gateway ${GATEWAY.ttnGatewayId}`);
 
+const forceRanges = process.argv.includes("--ranges");
+
 for (const u of UNITS) {
-  // Ranges are edited in the app, so only seed them when the unit is new.
+  // Ranges are editable in the app, so re-running does not quietly undo someone's change —
+  // unless --ranges says to apply the file's numbers on purpose.
   const existing = await prisma.unit.findUnique({
     where: { locationId_name: { locationId: location.id, name: u.name } },
   });
+  const thresholds = {
+    rangeMinF: u.rangeMinF,
+    rangeMaxF: u.rangeMaxF,
+    alertMinF: u.alertMinF,
+    alertMaxF: u.alertMaxF,
+    probeMinF: u.probeMinF ?? null,
+    probeMaxF: u.probeMaxF ?? null,
+  };
   await prisma.unit.upsert({
     where: { locationId_name: { locationId: location.id, name: u.name } },
     update: {
       type: u.type,
       model: u.model ?? null,
       serial: u.serial ?? null,
-      ...(existing ? {} : { rangeMinF: u.rangeMinF, rangeMaxF: u.rangeMaxF }),
+      ...(existing && !forceRanges ? {} : thresholds),
     },
-    create: {
-      locationId: location.id,
-      name: u.name,
-      type: u.type,
-      model: u.model ?? null,
-      serial: u.serial ?? null,
-      rangeMinF: u.rangeMinF,
-      rangeMaxF: u.rangeMaxF,
-    },
+    create: { locationId: location.id, name: u.name, type: u.type, model: u.model ?? null, serial: u.serial ?? null, ...thresholds },
   });
-  const range = existing ? `${existing.rangeMinF}…${existing.rangeMaxF} (kept)` : `${u.rangeMinF}…${u.rangeMaxF}`;
-  console.log(`  ${existing ? "updated" : "created"}  ${u.name.padEnd(16)} ${range} °F`);
+  const applied = !existing || forceRanges;
+  const shown = applied ? thresholds : existing;
+  console.log(
+    `  ${(!existing ? "created" : forceRanges ? "updated" : "kept   ")}  ${u.name.padEnd(16)} ` +
+      `норма ${shown.rangeMinF}…${shown.rangeMaxF} · тревога ${shown.alertMinF ?? "—"}…${shown.alertMaxF ?? "—"}` +
+      (u.probeMinF !== undefined ? ` · дакт ${shown.probeMinF ?? "—"}…${shown.probeMaxF ?? "—"}` : ""),
+  );
 }
 
 console.log(`\nDone. Next: npm run sensors:import`);

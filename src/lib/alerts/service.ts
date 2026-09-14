@@ -3,8 +3,10 @@ import { publish } from "@/lib/events";
 import { notify, locationUrl, type AlertNotification } from "@/lib/notify";
 import {
   evaluateTempReading,
+  alertRange,
   isOutOfRange,
   peakOf,
+  type TempRange,
   isSensorOffline,
   canNotify,
   fullyOfflineLocations,
@@ -51,14 +53,15 @@ function notifyAndStamp(alertIds: string[], n: AlertNotification): void {
  * what "temperature held for an hour" has to mean.
  */
 async function outOfRangeRun(
-  unit: { id: string; rangeMinF: number; rangeMaxF: number },
+  unitId: string,
+  bounds: TempRange,
   reading: NewReading,
 ): Promise<{ startedAt: Date; peakTempF: number } | null> {
   const lastGood = await prisma.reading.findFirst({
     where: {
-      unitId: unit.id,
+      unitId,
       measuredAt: { lt: reading.measuredAt },
-      tempF: { gte: unit.rangeMinF, lte: unit.rangeMaxF },
+      tempF: { gte: bounds.rangeMinF, lte: bounds.rangeMaxF },
     },
     orderBy: { measuredAt: "desc" },
     select: { measuredAt: true },
@@ -66,7 +69,7 @@ async function outOfRangeRun(
 
   const agg = await prisma.reading.aggregate({
     where: {
-      unitId: unit.id,
+      unitId,
       measuredAt: { lte: reading.measuredAt, ...(lastGood ? { gt: lastGood.measuredAt } : {}) },
     },
     _min: { measuredAt: true, tempF: true },
@@ -77,7 +80,7 @@ async function outOfRangeRun(
   if (!startedAt) return null;
   const lo = agg._min.tempF ?? reading.tempF;
   const hi = agg._max.tempF ?? reading.tempF;
-  return { startedAt, peakTempF: peakOf(lo, hi, unit) };
+  return { startedAt, peakTempF: peakOf(lo, hi, bounds) };
 }
 
 export interface NewReading {
@@ -100,12 +103,14 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
     where: { unitId: unit.id, type: "temp_out_of_range", resolvedAt: null },
   });
 
-  // Only worth looking up the run when a new alert could open from it
-  const run = openAlert || !isOutOfRange(reading.tempF, unit) ? null : await outOfRangeRun(unit, reading);
+  // Judged against the alert band, not the normal one: leaving "normal" colours the reading,
+  // crossing the alert threshold for an hour is what raises anything.
+  const bounds = alertRange(unit);
+  const run = openAlert || !isOutOfRange(reading.tempF, bounds) ? null : await outOfRangeRun(unit.id, bounds, reading);
 
   const decision = evaluateTempReading({
-    rangeMinF: unit.rangeMinF,
-    rangeMaxF: unit.rangeMaxF,
+    rangeMinF: bounds.rangeMinF,
+    rangeMaxF: bounds.rangeMaxF,
     current: reading.tempF,
     outOfRangeForMin: run ? (reading.measuredAt.getTime() - run.startedAt.getTime()) / 60_000 : 0,
     runPeakTempF: run?.peakTempF ?? null,

@@ -80,8 +80,15 @@ export interface UnitDetail {
   serial: string | null;
   year: number | null;
   refrigerant: string | null;
+  /** The normal band — shown in the table and painted green on the chart */
   rangeMinF: number;
   rangeMaxF: number;
+  /** Where an alert opens, when it differs from the normal band */
+  alertMinF: number | null;
+  alertMaxF: number | null;
+  /** An AC duct probe's own band; it never decides the unit's status */
+  probeMinF: number | null;
+  probeMaxF: number | null;
   status: UnitStatus;
   lastReading: LastReading | null;
   activeAlert: ActiveAlert | null;
@@ -155,6 +162,10 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 export interface UnitPatch {
   rangeMinF: number;
   rangeMaxF: number;
+  alertMinF?: number | null;
+  alertMaxF?: number | null;
+  probeMinF?: number | null;
+  probeMaxF?: number | null;
   refrigerant?: string | null;
   year?: number | null;
 }
@@ -226,9 +237,9 @@ export function formatTemp(tempF: number): string {
 }
 
 /**
- * A reading outside the unit's range is shown in red immediately, even before the
- * alert opens: an alert needs two consecutive bad readings, but the number itself
- * is already wrong and hiding that reads as a bug.
+ * A reading outside the normal band is shown in red at once, well before any alert: an alert
+ * waits for an hour above the alarm threshold, but the number itself is already wrong and
+ * hiding that reads as a bug.
  */
 export function isOutOfRange(tempF: number, u: { rangeMinF: number; rangeMaxF: number }): boolean {
   return tempF < u.rangeMinF || tempF > u.rangeMaxF;

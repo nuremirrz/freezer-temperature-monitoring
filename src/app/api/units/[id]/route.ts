@@ -17,6 +17,10 @@ const patchSchema = z
   .object({
     rangeMinF: z.number().finite().min(-80).max(150),
     rangeMaxF: z.number().finite().min(-80).max(150),
+    alertMinF: z.number().finite().min(-80).max(150).nullable().optional(),
+    alertMaxF: z.number().finite().min(-80).max(150).nullable().optional(),
+    probeMinF: z.number().finite().min(-80).max(150).nullable().optional(),
+    probeMaxF: z.number().finite().min(-80).max(150).nullable().optional(),
     refrigerant: z.string().trim().max(40).nullable().optional(),
     year: z.number().int().min(1950).max(2100).nullable().optional(),
   })
@@ -42,16 +46,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const unit = await prisma.unit.findUnique({ where: { id }, select: { id: true, locationId: true } });
   if (!unit) return NextResponse.json({ message: "Unit not found" }, { status: 404 });
 
-  const { rangeMinF, rangeMaxF, refrigerant, year } = parsed.data;
+  const { rangeMinF, rangeMaxF, alertMinF, alertMaxF, probeMinF, probeMaxF, refrigerant, year } = parsed.data;
   const updated = await prisma.unit.update({
     where: { id },
     data: {
       rangeMinF,
       rangeMaxF,
+      ...(alertMinF !== undefined ? { alertMinF } : {}),
+      ...(alertMaxF !== undefined ? { alertMaxF } : {}),
+      ...(probeMinF !== undefined ? { probeMinF } : {}),
+      ...(probeMaxF !== undefined ? { probeMaxF } : {}),
       ...(refrigerant !== undefined ? { refrigerant: refrigerant || null } : {}),
       ...(year !== undefined ? { year } : {}),
     },
-    select: { id: true, rangeMinF: true, rangeMaxF: true, refrigerant: true, year: true },
+    select: {
+      id: true, rangeMinF: true, rangeMaxF: true,
+      alertMinF: true, alertMaxF: true, probeMinF: true, probeMaxF: true,
+      refrigerant: true, year: true,
+    },
   });
 
   // Statuses everywhere depend on the range, so wake the open screens up

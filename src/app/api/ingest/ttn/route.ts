@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
       unmapped.push(ch.channel);
       continue;
     }
-    const tempF = mapping.unit?.type === "ac" ? u.ambientTempF : ch.tempF;
+    const isAC = mapping.unit?.type === "ac";
+    const tempF = isAC ? u.ambientTempF : ch.tempF;
     if (tempF === undefined) {
       // An AC whose uplink carried no room temperature: recording the duct value instead
       // would quietly compare the wrong number against the unit's range.
@@ -127,6 +128,8 @@ export async function POST(req: NextRequest) {
           sensorId: sensor.id,
           channel: ch.channel,
           tempF,
+          // Kept beside it so the AC chart can draw the duct line over time, not just now
+          probeTempF: isAC ? ch.tempF : null,
           measuredAt: u.receivedAt,
         },
       ],

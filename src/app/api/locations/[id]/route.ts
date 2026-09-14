@@ -70,6 +70,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       refrigerant: u.refrigerant,
       rangeMinF: u.rangeMinF,
       rangeMaxF: u.rangeMaxF,
+      alertMinF: u.alertMinF,
+      alertMaxF: u.alertMaxF,
+      probeMinF: u.probeMinF,
+      probeMaxF: u.probeMaxF,
       status,
       lastReading: last ? { tempF: last.tempF, measuredAt: last.measuredAt.toISOString() } : null,
       activeAlert: active

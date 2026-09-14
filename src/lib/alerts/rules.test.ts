@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  alertRange,
   evaluateTempReading,
   isBackInRange,
   isOutOfRange,
@@ -103,6 +104,27 @@ describe("temp out of range — while open", () => {
     expect(
       evaluateTempReading({ ...FREEZER, current: 14, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: null } }),
     ).toEqual({ action: "update", peakTempF: 14 });
+  });
+});
+
+describe("alertRange", () => {
+  it("uses the alarm thresholds when they are set", () => {
+    expect(alertRange({ rangeMinF: 0, rangeMaxF: 10, alertMinF: null, alertMaxF: 20 })).toEqual({
+      rangeMinF: 0,
+      rangeMaxF: 20,
+    });
+  });
+
+  it("falls back to the normal band when they are not", () => {
+    expect(alertRange({ rangeMinF: 32, rangeMaxF: 40 })).toEqual({ rangeMinF: 32, rangeMaxF: 40 });
+  });
+
+  it("keeps a walk-in freezer quiet between normal and alarming", () => {
+    const freezer = { rangeMinF: 0, rangeMaxF: 10, alertMinF: null, alertMaxF: 20 };
+    // 15 °F is out of the normal band — the reading shows red — but nothing is raised
+    expect(isOutOfRange(15, freezer)).toBe(true);
+    expect(isOutOfRange(15, alertRange(freezer))).toBe(false);
+    expect(isOutOfRange(21, alertRange(freezer))).toBe(true);
   });
 });
 

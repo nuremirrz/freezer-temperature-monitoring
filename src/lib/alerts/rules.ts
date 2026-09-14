@@ -23,6 +23,25 @@ export interface TempRange {
   rangeMaxF: number;
 }
 
+/**
+ * The band an alert is judged against.
+ *
+ * Two bands, because they answer different questions. The normal band is what the equipment
+ * ought to hold and what the chart paints green; the alert band is where a person needs to be
+ * woken up. A walk-in freezer is normal to 10 °F and alarming from 20 °F, and it spends most
+ * of its day in between — defrosting, taking a delivery, having its door held open.
+ *
+ * When no alert band is set, the normal band does both jobs, which is how this behaved before.
+ */
+export function alertRange(u: {
+  rangeMinF: number;
+  rangeMaxF: number;
+  alertMinF?: number | null;
+  alertMaxF?: number | null;
+}): TempRange {
+  return { rangeMinF: u.alertMinF ?? u.rangeMinF, rangeMaxF: u.alertMaxF ?? u.rangeMaxF };
+}
+
 export function isOutOfRange(tempF: number, r: TempRange): boolean {
   return tempF < r.rangeMinF || tempF > r.rangeMaxF;
 }
