@@ -197,57 +197,57 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
 
         {/* Sensor health — real hardware telemetry, only when a sensor is mapped */}
         {sensor && (
-          <div className="mt-4 rounded-xl border border-line bg-panel p-4 md:p-5">
-            <div className="mb-3 text-sm font-semibold">Sensor</div>
-            <div className="grid gap-3 text-sm @lg:grid-cols-2">
-              <div className="flex items-center gap-2.5">
-                <Radio size={16} className="shrink-0 text-muted" />
+          <div className="mt-4 rounded-xl border border-line bg-panel p-3.5 md:p-4">
+            <div className="mb-2.5 text-xs font-semibold text-muted">Sensor</div>
+            <div className="grid gap-x-6 gap-y-2 text-xs whitespace-nowrap @lg:grid-cols-2">
+              <div className="flex items-center gap-2">
+                <Radio size={13} className="shrink-0 text-faint" />
                 <span className="text-muted">Device</span>
-                <span className="ml-auto font-medium tabular-nums">
+                <span className="ml-auto font-medium text-ink-soft tabular-nums">
                   {sensor.devEui} · ch{sensor.channel}
                 </span>
               </div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <span className="text-muted">Sensor</span>
-                <span className="ml-auto font-medium">{sensor.model ?? sensor.nodeType ?? "—"}</span>
+                <span className="ml-auto font-medium text-ink-soft">{sensor.model ?? sensor.nodeType ?? "—"}</span>
               </div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <span className="text-muted">TTN name</span>
-                <span className="ml-auto font-medium">{sensor.ttnDeviceId ?? "—"}</span>
+                <span className="ml-auto font-medium text-ink-soft">{sensor.ttnDeviceId ?? "—"}</span>
               </div>
-              <div className="flex items-center gap-2.5">
-                <Tag size={16} className="shrink-0 text-muted" />
+              <div className="flex items-center gap-2">
+                <Tag size={13} className="shrink-0 text-faint" />
                 <span className="text-muted">Label</span>
-                <span className="ml-auto font-medium">{sensor.label ?? "—"}</span>
+                <span className="ml-auto font-medium text-ink-soft">{sensor.label ?? "—"}</span>
               </div>
-              <div className="flex items-center gap-2.5">
-                <BatteryMedium size={16} className="shrink-0 text-muted" />
+              <div className="flex items-center gap-2">
+                <BatteryMedium size={13} className="shrink-0 text-faint" />
                 <span className="text-muted">Battery</span>
-                <span className="ml-auto font-medium tabular-nums">
+                <span className="ml-auto font-medium text-ink-soft tabular-nums">
                   {sensor.batteryV ? `${sensor.batteryV} V` : "—"}
                   {sensor.batteryPct !== null ? ` · ${sensor.batteryPct}%` : ""}
                   {sensor.batStatus ? ` · ${sensor.batStatus}` : ""}
                 </span>
               </div>
-              <div className="flex items-center gap-2.5">
-                <Radio size={16} className="shrink-0 text-muted" />
+              <div className="flex items-center gap-2">
+                <Radio size={13} className="shrink-0 text-faint" />
                 <span className="text-muted">Signal</span>
-                <span className="ml-auto font-medium tabular-nums">
+                <span className="ml-auto font-medium text-ink-soft tabular-nums">
                   {sensor.lastRssi !== null ? `${sensor.lastRssi} dBm` : "—"}
                   {sensor.lastSnr !== null ? ` · SNR ${sensor.lastSnr}` : ""}
                 </span>
               </div>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <span className="text-muted">Last seen</span>
-                <span className="ml-auto font-medium tabular-nums">
+                <span className="ml-auto font-medium text-ink-soft tabular-nums">
                   {sensor.lastSeenAt ? formatLocalTime(sensor.lastSeenAt, loc.timezone) : "never"}
                 </span>
               </div>
               {!isAC && sensor.ambientTempF !== null && (
-                <div className="flex items-center gap-2.5">
-                  <Wind size={16} className="shrink-0 text-muted" />
+                <div className="flex items-center gap-2">
+                  <Wind size={13} className="shrink-0 text-faint" />
                   <span className="text-muted">Air around the device</span>
-                  <span className="ml-auto font-medium tabular-nums">
+                  <span className="ml-auto font-medium text-ink-soft tabular-nums">
                     {Math.round(sensor.ambientTempF)}°F
                     {sensor.ambientHum !== null ? ` · ${Math.round(sensor.ambientHum)}%` : ""}
                   </span>

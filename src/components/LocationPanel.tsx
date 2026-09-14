@@ -56,12 +56,15 @@ const WEATHER_ICON = {
   storm: CloudLightning,
 } as const;
 
-type TabKey = "all" | "freezer" | "ac" | "walkin";
+type TabKey = "all" | "ac" | "walkin";
 
+/**
+ * A standalone `freezer` had its own tab, which read as a lie at BK6816: the restaurant has a
+ * walk-in freezer, so "Freezers (0)" looked like a fault rather than a category nobody there
+ * uses. Both walk-ins now sit under one tab.
+ */
 function tabOf(u: UnitDetail): Exclude<TabKey, "all"> {
-  if (u.type === "ac") return "ac";
-  if (u.type === "freezer") return "freezer";
-  return "walkin";
+  return u.type === "ac" ? "ac" : "walkin";
 }
 
 function StatusCard({ loc }: { loc: LocationDetail }) {
@@ -175,7 +178,7 @@ export default function LocationPanel({
   void minuteTick; // re-render durations and "x min ago" every minute
 
   const counts = useMemo(() => {
-    const c = { all: loc.units.length, freezer: 0, ac: 0, walkin: 0 };
+    const c = { all: loc.units.length, ac: 0, walkin: 0 };
     for (const u of loc.units) c[tabOf(u)]++;
     return c;
   }, [loc]);
@@ -184,9 +187,8 @@ export default function LocationPanel({
 
   const TABS: { key: TabKey; label: string }[] = [
     { key: "all", label: `All Equipment (${counts.all})` },
-    { key: "freezer", label: `Freezers (${counts.freezer})` },
-    { key: "ac", label: `AC Units (${counts.ac})` },
     { key: "walkin", label: `Walk-ins (${counts.walkin})` },
+    { key: "ac", label: `AC Units (${counts.ac})` },
   ];
 
   const openUnit = (id: string) => router.push(`/locations/${loc.id}/units/${id}`);
