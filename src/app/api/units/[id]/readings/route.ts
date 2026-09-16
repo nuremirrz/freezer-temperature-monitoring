@@ -6,15 +6,15 @@ import { visibleLocationIds, canSee } from "@/lib/auth/access";
 
 export const dynamic = "force-dynamic";
 
-type Range = "1h" | "1d" | "1w" | "1m";
+type Range = "12h" | "1d" | "1w" | "1m";
 
 /**
- * The four spans the client asked for. An hour and a day are drawn from raw readings — at a
- * five-minute uplink that is 288 points for a day, which a line handles fine. A week and a
+ * The four spans the client asked for. Half a day and a day are drawn from raw readings — at
+ * a five-minute uplink that is 288 points for a day, which a line handles fine. A week and a
  * month are averaged into buckets in the query rather than shipped point by point.
  */
 const RANGES: Record<Range, { hours: number; bucketMinutes: number | null }> = {
-  "1h": { hours: 1, bucketMinutes: null },
+  "12h": { hours: 12, bucketMinutes: null },
   "1d": { hours: 24, bucketMinutes: null },
   "1w": { hours: 24 * 7, bucketMinutes: 30 },
   "1m": { hours: 24 * 30, bucketMinutes: 120 },
@@ -29,7 +29,7 @@ interface BucketRow {
   n: number;
 }
 
-/** GET /api/units/[id]/readings?range=1h|1d|1w|1m */
+/** GET /api/units/[id]/readings?range=12h|1d|1w|1m */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return unauthorized();
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const rangeParam = (req.nextUrl.searchParams.get("range") ?? "1d") as Range;
   const cfg = RANGES[rangeParam];
   if (!cfg) {
-    return NextResponse.json({ error: "range must be 1h, 1d, 1w or 1m" }, { status: 400 });
+    return NextResponse.json({ error: "range must be 12h, 1d, 1w or 1m" }, { status: 400 });
   }
 
   const unit = await prisma.unit.findUnique({

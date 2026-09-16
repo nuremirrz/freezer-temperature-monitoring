@@ -133,10 +133,7 @@ function xTicks(from: number, to: number, everyHours: number): number[] {
 
 function fmtTick(range: ChartRange, t: number, timeZone: string): string {
   const d = new Date(t);
-  if (range === "1h") {
-    return d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true });
-  }
-  if (range === "1d") {
+  if (range === "12h" || range === "1d") {
     // Whole hours only — "9 AM" rather than "9:00 AM", so twice as many labels fit
     return d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", hour12: true });
   }
@@ -208,7 +205,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
 
   const xFrom = points.length ? points[0].t : 0;
   const xTo = points.length ? points[points.length - 1].t : 0;
-  const hourly = range === "1h" || range === "1d";
+  const hourly = range === "12h" || range === "1d";
   const tickHours = isAC ? 1 : 2;
 
   const showRoom = !isAC || series !== "duct";

@@ -117,10 +117,10 @@ export interface LocationDetail {
   units: UnitDetail[];
 }
 
-export type ChartRange = "1h" | "1d" | "1w" | "1m";
+export type ChartRange = "12h" | "1d" | "1w" | "1m";
 
 export const CHART_RANGES: { key: ChartRange; label: string }[] = [
-  { key: "1h", label: "1H" },
+  { key: "12h", label: "12H" },
   { key: "1d", label: "1D" },
   { key: "1w", label: "1W" },
   { key: "1m", label: "1M" },
