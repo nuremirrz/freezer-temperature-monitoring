@@ -22,7 +22,7 @@ import {
   UNIT_IMAGE,
   UNIT_TYPE_LABEL,
   formatTemp,
-  tempLevel,
+  tempReadout,
   TEMP_LEVEL_CLASS,
   formatDuration,
   formatAge,
@@ -46,7 +46,7 @@ function Trend({ unit }: { unit: UnitDetail }) {
   if (!unit.lastReading) {
     return <div className="mt-1.5 text-xl font-semibold text-offline">—</div>;
   }
-  if (tempLevel(unit.lastReading.tempF, unit) !== "normal") {
+  if (tempReadout(unit.lastReading.tempF, unit).level !== "normal") {
     const above = unit.lastReading.tempF > unit.rangeMaxF;
     return (
       <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold text-alert @xs:text-xl">
@@ -69,7 +69,10 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
   const isAlert = unit.status === "alert";
   const isOffline = unit.status === "offline";
   const sensor = unit.sensor;
-  const level = unit.lastReading ? tempLevel(unit.lastReading.tempF, unit) : "normal";
+  const readout = unit.lastReading
+    ? tempReadout(unit.lastReading.tempF, unit)
+    : ({ level: "normal", note: null } as const);
+  const level = readout.level;
   const outOfRange = level !== "normal";
   const isAC = unit.type === "ac";
 
@@ -137,10 +140,8 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
                   <AlertTriangle size={12} /> Needs attention
                 </div>
               )}
-              {outOfRange && !isAlert && (
-                <div className={`mt-1 text-xs font-medium ${TEMP_LEVEL_CLASS[level] || "text-warn"}`}>
-                  {level === "bad" ? "Past the alarm threshold" : "Outside the normal range"}
-                </div>
+              {outOfRange && !isAlert && readout.note && (
+                <div className={`mt-1 text-xs font-medium ${TEMP_LEVEL_CLASS[level]}`}>{readout.note}</div>
               )}
               {unit.lastReading && !isAlert && !outOfRange && (
                 <div className="mt-1 text-xs text-faint">{formatAge(unit.lastReading.measuredAt)}</div>

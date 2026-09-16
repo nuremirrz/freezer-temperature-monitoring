@@ -30,7 +30,7 @@ import {
   fullAddress,
   formatRange,
   formatTemp,
-  tempLevel,
+  tempReadout,
   TEMP_LEVEL_CLASS,
   formatDuration,
   formatAge,
@@ -159,7 +159,7 @@ function WeatherCard({ loc }: { loc: LocationDetail }) {
 function UnitTemp({ u }: { u: UnitDetail }) {
   if (!u.lastReading) return <span className="text-offline">—</span>;
   return (
-    <span className={TEMP_LEVEL_CLASS[tempLevel(u.lastReading.tempF, u)]}>
+    <span className={TEMP_LEVEL_CLASS[tempReadout(u.lastReading.tempF, u).level]}>
       {formatTemp(u.lastReading.tempF)}
     </span>
   );

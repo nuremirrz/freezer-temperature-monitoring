@@ -61,12 +61,16 @@ interface UnitSeed {
 }
 
 const UNITS: UnitSeed[] = [
-  { name: "Walk-in Cooler", type: "walk_in_cooler", rangeMinF: 32, rangeMaxF: 40, alertMinF: 20, alertMaxF: 50 },
+  // Normal band = green, alert band = where red starts; the gap between them is the amber
+  // Warning. Straight from the client's table of 16 Sep.
+  { name: "Walk-in Cooler", type: "walk_in_cooler", rangeMinF: 33, rangeMaxF: 40, alertMinF: 33, alertMaxF: 50 },
+  // No floor: a freezer is never too cold, so the low alert sits out of reach on purpose
   { name: "Walk-in Freezer", type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 },
-  { name: "AC1 - Kitchen", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48FCFM07A2A5A6U0A0", serial: "2419C85938" },
-  { name: "AC2 - Dining", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48KCNA06A2A5B6U0A0", serial: "2419C85977" },
-  { name: "AC3 - Dining", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48FCFM07A2A5A6U0A0", serial: "2419C85937" },
-  { name: "AC4 - Kitchen", type: "ac", rangeMinF: 68, rangeMaxF: 80, alertMinF: 40, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48KCNA06A2A5B6U0A0", serial: "2419C85976" },
+  // A kitchen is allowed to run warmer than a dining room — 80 against 75
+  { name: "AC1 - Kitchen", type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85, probeMinF: 50, probeMaxF: 60, model: "48FCFM07A2A5A6U0A0", serial: "2419C85938" },
+  { name: "AC2 - Dining", type: "ac", rangeMinF: 65, rangeMaxF: 75, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48KCNA06A2A5B6U0A0", serial: "2419C85977" },
+  { name: "AC3 - Dining", type: "ac", rangeMinF: 65, rangeMaxF: 75, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 60, model: "48FCFM07A2A5A6U0A0", serial: "2419C85937" },
+  { name: "AC4 - Kitchen", type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85, probeMinF: 50, probeMaxF: 60, model: "48KCNA06A2A5B6U0A0", serial: "2419C85976" },
 ];
 
 const location = await prisma.location.upsert({

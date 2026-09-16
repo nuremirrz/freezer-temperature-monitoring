@@ -251,44 +251,68 @@ export function formatTemp(tempF: number): string {
   return `${Math.round(tempF)}°F`;
 }
 
-export type TempLevel = "normal" | "watch" | "bad";
+export type TempLevel = "normal" | "warning" | "critical";
+
+export interface TempReadout {
+  level: TempLevel;
+  /** Why it is not normal, when there is something worth saying */
+  note: string | null;
+}
 
 /**
- * How a reading should read on screen.
+ * How a reading should read on screen, in the client's own three levels.
  *
- * Judged on the *rounded* number, because that is the number the viewer sees: 67.6 °F shows
- * as "68" and colouring it red under a 68–80 range makes the screen argue with itself.
+ * The bands already on the unit do the work: inside the normal band is Normal, past the alarm
+ * threshold is Critical, and the gap between them is Warning — a freezer in defrost or an AC
+ * that just cycled off, worth noticing and not worth waking anyone for.
  *
- * Three levels, matching the chart's zones. "watch" is outside the normal band but short of
- * the alarm threshold — a freezer in defrost, an AC that just cycled off. It is worth
- * noticing and not worth waking anyone up for, so it is amber rather than red.
+ * Judged on the *rounded* number, because that is the number beside it: 67.6 °F shows as "68"
+ * and colouring it red under a 68–80 range makes the screen argue with itself.
  */
-export function tempLevel(
+export function tempReadout(
   tempF: number,
-  u: { rangeMinF: number; rangeMaxF: number; alertMinF?: number | null; alertMaxF?: number | null },
-): TempLevel {
+  u: {
+    type?: UnitType;
+    rangeMinF: number;
+    rangeMaxF: number;
+    alertMinF?: number | null;
+    alertMaxF?: number | null;
+  },
+): TempReadout {
   const t = Math.round(tempF);
   const alertLo = u.alertMinF ?? u.rangeMinF;
   const alertHi = u.alertMaxF ?? u.rangeMaxF;
-  if (t < alertLo || t > alertHi) return "bad";
-  if (t < u.rangeMinF || t > u.rangeMaxF) return "watch";
-  return "normal";
+
+  // A freezer cannot be too cold — colder only keeps things better, which is why the client's
+  // rule for one reads "up to 10 °F Normal" with no floor. Everything else here can: a cooler
+  // freezes its produce, a dining room gets uncomfortable.
+  const coldSideMatters = u.type !== "freezer" && u.type !== "walk_in_freezer";
+
+  if (coldSideMatters) {
+    if (t < alertLo) {
+      return { level: "critical", note: u.type === "walk_in_cooler" ? "Freeze risk" : "Below normal" };
+    }
+    if (t < u.rangeMinF) return { level: "warning", note: "Below normal range" };
+  }
+  if (t > alertHi) return { level: "critical", note: "Above normal" };
+  if (t > u.rangeMaxF) return { level: "warning", note: "Above normal range" };
+  return { level: "normal", note: null };
 }
+
+/** Text colour for a level. Normal is green, as the client asked — not merely "not red". */
+export const TEMP_LEVEL_CLASS: Record<TempLevel, string> = {
+  normal: "text-ok",
+  warning: "text-warn",
+  critical: "text-alert",
+};
 
 /** Convenience for the places that only care whether the number has left the normal band. */
 export function isOutOfRange(
   tempF: number,
   u: { rangeMinF: number; rangeMaxF: number; alertMinF?: number | null; alertMaxF?: number | null },
 ): boolean {
-  return tempLevel(tempF, u) !== "normal";
+  return tempReadout(tempF, u).level !== "normal";
 }
-
-/** Tailwind text colour for a level. */
-export const TEMP_LEVEL_CLASS: Record<TempLevel, string> = {
-  normal: "",
-  watch: "text-warn",
-  bad: "text-alert",
-};
 
 /** "2h 45m", or "dd:hh:mm" once it exceeds a day. */
 export function formatDuration(sinceIso: string, now: number = Date.now()): string {
