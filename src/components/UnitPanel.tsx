@@ -41,23 +41,29 @@ function Tile({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-/** Which direction the temperature is heading, from the alert peak or the range midpoint. */
+/**
+ * Which way the temperature has been going, taken from the readings themselves.
+ * "Stable" here means the last few uplinks agree with the few before them — not that the
+ * reading happens to sit inside its range.
+ */
 function Trend({ unit }: { unit: UnitDetail }) {
-  if (!unit.lastReading) {
-    return <div className="mt-1.5 text-xl font-semibold text-offline">—</div>;
-  }
-  if (tempReadout(unit.lastReading.tempF, unit).level !== "normal") {
-    const above = unit.lastReading.tempF > unit.rangeMaxF;
+  const look: Record<string, { text: string; icon: React.ReactNode; tone: string }> = {
+    rising: { text: "Rising", icon: <TrendingUp size={18} />, tone: "text-alert" },
+    falling: { text: "Falling", icon: <TrendingDown size={18} />, tone: "text-accent" },
+    stable: { text: "Stable", icon: <MoveRight size={18} />, tone: "text-ok" },
+  };
+  const t = look[unit.trend];
+  if (!t) {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold text-alert @xs:text-xl">
-        {above ? "Rising" : "Falling"}
-        {above ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+      <div className="mt-1.5 text-lg font-semibold text-offline @xs:text-xl" title="Not enough readings yet">
+        —
       </div>
     );
   }
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold text-ok @xs:text-xl">
-      Stable <MoveRight size={18} />
+    <div className={`mt-1.5 flex items-center gap-1.5 text-lg font-semibold @xs:text-xl ${t.tone}`}>
+      {t.text}
+      {t.icon}
     </div>
   );
 }

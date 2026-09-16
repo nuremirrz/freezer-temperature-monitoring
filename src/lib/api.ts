@@ -9,6 +9,7 @@ export type UnitStatus = "normal" | "alert" | "offline";
 export type LocationStatus = UnitStatus;
 export type UnitType = "freezer" | "walk_in_freezer" | "walk_in_cooler" | "ac";
 export type AlertType = "temp_out_of_range" | "offline";
+export type Trend = "rising" | "falling" | "stable" | "unknown";
 
 export interface StatusCounts {
   normal: number;
@@ -90,6 +91,8 @@ export interface UnitDetail {
   probeMinF: number | null;
   probeMaxF: number | null;
   status: UnitStatus;
+  /** Which way the temperature has been going, from the readings — not from the range */
+  trend: Trend;
   lastReading: LastReading | null;
   activeAlert: ActiveAlert | null;
   sensor: SensorInfo | null;

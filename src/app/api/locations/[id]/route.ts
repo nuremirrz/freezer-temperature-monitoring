@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { unauthorized } from "@/lib/auth/http";
 import { visibleLocationIds, canSee } from "@/lib/auth/access";
 import { deriveUnitStatus, deriveLocationStatus } from "@/lib/status";
+import { trendOf, TREND_WINDOW } from "@/lib/trend";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,11 @@ interface LatestRow {
   unitId: string;
   tempF: number;
   measuredAt: Date;
+}
+
+interface RecentRow {
+  unitId: string;
+  tempF: number;
 }
 
 /** GET /api/locations/[id] — location + units with last reading, status and active alert. */
@@ -53,6 +59,25 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     for (const r of rows) latest.set(r.unitId, r);
   }
 
+  // The handful of readings behind each unit, for the trend. One query for the lot, capped
+  // per unit so a busy sensor cannot drown a quiet one.
+  const recent = new Map<string, number[]>();
+  if (unitIds.length) {
+    const placeholders = unitIds.map((_, i) => `$${i + 1}`).join(", ");
+    const rows = await prisma.$queryRawUnsafe<RecentRow[]>(
+      `SELECT "unitId", "tempF" FROM (
+         SELECT "unitId", "tempF",
+                row_number() OVER (PARTITION BY "unitId" ORDER BY "measuredAt" DESC) AS rn
+         FROM "Reading"
+         WHERE "unitId" IN (${placeholders}) AND "measuredAt" > now() - interval '12 hours'
+       ) t
+       WHERE rn <= ${TREND_WINDOW * 2}
+       ORDER BY "unitId", rn ASC`,
+      ...unitIds,
+    );
+    for (const r of rows) recent.set(r.unitId, [...(recent.get(r.unitId) ?? []), r.tempF]);
+  }
+
   const units = loc.units.map((u) => {
     const last = latest.get(u.id);
     const status = deriveUnitStatus(u.alerts, Boolean(last));
@@ -76,6 +101,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       probeMaxF: u.probeMaxF,
       status,
       lastReading: last ? { tempF: last.tempF, measuredAt: last.measuredAt.toISOString() } : null,
+      trend: trendOf(recent.get(u.id) ?? []),
       activeAlert: active
         ? {
             id: active.id,
