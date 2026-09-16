@@ -22,7 +22,8 @@ import {
   UNIT_IMAGE,
   UNIT_TYPE_LABEL,
   formatTemp,
-  isOutOfRange,
+  tempLevel,
+  TEMP_LEVEL_CLASS,
   formatDuration,
   formatAge,
   formatLocalTime,
@@ -45,7 +46,7 @@ function Trend({ unit }: { unit: UnitDetail }) {
   if (!unit.lastReading) {
     return <div className="mt-1.5 text-xl font-semibold text-offline">—</div>;
   }
-  if (isOutOfRange(unit.lastReading.tempF, unit)) {
+  if (tempLevel(unit.lastReading.tempF, unit) !== "normal") {
     const above = unit.lastReading.tempF > unit.rangeMaxF;
     return (
       <div className="mt-1.5 flex items-center gap-1.5 text-lg font-semibold text-alert @xs:text-xl">
@@ -68,7 +69,8 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
   const isAlert = unit.status === "alert";
   const isOffline = unit.status === "offline";
   const sensor = unit.sensor;
-  const outOfRange = unit.lastReading ? isOutOfRange(unit.lastReading.tempF, unit) : false;
+  const level = unit.lastReading ? tempLevel(unit.lastReading.tempF, unit) : "normal";
+  const outOfRange = level !== "normal";
   const isAC = unit.type === "ac";
 
   return (
@@ -126,9 +128,7 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
           <div className="grid grid-cols-2 gap-2.5 @3xl:grid-cols-4 md:gap-3">
             <Tile label={isAC ? "Room Temperature" : "Current Temp"}>
               <div
-                className={`mt-1 text-xl font-semibold tabular-nums @xs:text-2xl ${
-                  outOfRange ? "text-alert" : ""
-                }`}
+                className={`mt-1 text-xl font-semibold tabular-nums @xs:text-2xl ${TEMP_LEVEL_CLASS[level]}`}
               >
                 {unit.lastReading ? formatTemp(unit.lastReading.tempF) : "—"}
               </div>
@@ -138,7 +138,9 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
                 </div>
               )}
               {outOfRange && !isAlert && (
-                <div className="mt-1 text-xs font-medium text-warn">Out of range, confirming</div>
+                <div className={`mt-1 text-xs font-medium ${TEMP_LEVEL_CLASS[level] || "text-warn"}`}>
+                  {level === "bad" ? "Past the alarm threshold" : "Outside the normal range"}
+                </div>
               )}
               {unit.lastReading && !isAlert && !outOfRange && (
                 <div className="mt-1 text-xs text-faint">{formatAge(unit.lastReading.measuredAt)}</div>

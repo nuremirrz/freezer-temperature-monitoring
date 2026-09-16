@@ -30,7 +30,8 @@ import {
   fullAddress,
   formatRange,
   formatTemp,
-  isOutOfRange,
+  tempLevel,
+  TEMP_LEVEL_CLASS,
   formatDuration,
   formatAge,
 } from "@/lib/api";
@@ -157,8 +158,11 @@ function WeatherCard({ loc }: { loc: LocationDetail }) {
 
 function UnitTemp({ u }: { u: UnitDetail }) {
   if (!u.lastReading) return <span className="text-offline">—</span>;
-  const bad = isOutOfRange(u.lastReading.tempF, u);
-  return <span className={bad ? "text-alert" : ""}>{formatTemp(u.lastReading.tempF)}</span>;
+  return (
+    <span className={TEMP_LEVEL_CLASS[tempLevel(u.lastReading.tempF, u)]}>
+      {formatTemp(u.lastReading.tempF)}
+    </span>
+  );
 }
 
 export default function LocationPanel({

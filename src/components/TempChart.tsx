@@ -102,11 +102,19 @@ const ceilTo = (n: number, step: number) => Math.ceil(n / step) * step;
 /**
  * The y-axis covers the zones by default and stretches only when a reading actually leaves
  * them, so a quiet day is not drawn as a flat line across an empty chart.
+ *
+ * The base is used exactly as given — rounding it to the tick step would undo a deliberate
+ * choice like the cooler's 25…55, which then ticks 25 / 35 / 45 / 55. Only the stretch
+ * rounds, so a stray reading still lands on a whole step.
  */
 function yDomain(base: [number, number], values: number[], step = 10): [number, number] {
-  const lo = values.length ? Math.min(base[0], Math.min(...values)) : base[0];
-  const hi = values.length ? Math.max(base[1], Math.max(...values)) : base[1];
-  return [floorTo(lo, step), ceilTo(hi, step)];
+  if (!values.length) return base;
+  const dataLo = Math.min(...values);
+  const dataHi = Math.max(...values);
+  return [
+    dataLo < base[0] ? floorTo(dataLo, step) : base[0],
+    dataHi > base[1] ? ceilTo(dataHi, step) : base[1],
+  ];
 }
 
 function ticksFor([lo, hi]: [number, number], step = 10): number[] {
@@ -125,8 +133,12 @@ function xTicks(from: number, to: number, everyHours: number): number[] {
 
 function fmtTick(range: ChartRange, t: number, timeZone: string): string {
   const d = new Date(t);
-  if (range === "1h" || range === "1d") {
-    return d.toLocaleTimeString("en-US", { timeZone, hour: "2-digit", minute: "2-digit", hour12: false });
+  if (range === "1h") {
+    return d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true });
+  }
+  if (range === "1d") {
+    // Whole hours only — "9 AM" rather than "9:00 AM", so twice as many labels fit
+    return d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", hour12: true });
   }
   return d.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
 }
@@ -190,8 +202,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
       ];
       return { domain: yDomain(base, [...rooms, ...ducts]) };
     }
-    const base: [number, number] =
-      unit.type === "walk_in_cooler" ? [30, 60] : [0, 40];
+    const base: [number, number] = unit.type === "walk_in_cooler" ? [25, 55] : [0, 40];
     return { domain: yDomain(base, rooms) };
   }, [points, isAC, unit.type]);
 
@@ -369,7 +380,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   type="monotone"
                   dataKey="probeTempF"
                   stroke={C.duct}
-                  strokeWidth={2}
+                  strokeWidth={1.25}
                   fill="url(#fillDuct)"
                   dot={false}
                   connectNulls
@@ -381,7 +392,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   type="monotone"
                   dataKey="tempF"
                   stroke={isAC ? C.room : C.alert}
-                  strokeWidth={2}
+                  strokeWidth={1.25}
                   fill={isAC ? "url(#fillRoom)" : "none"}
                   dot={false}
                   isAnimationActive={false}

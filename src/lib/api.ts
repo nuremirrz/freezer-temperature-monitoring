@@ -251,14 +251,44 @@ export function formatTemp(tempF: number): string {
   return `${Math.round(tempF)}°F`;
 }
 
+export type TempLevel = "normal" | "watch" | "bad";
+
 /**
- * A reading outside the normal band is shown in red at once, well before any alert: an alert
- * waits for an hour above the alarm threshold, but the number itself is already wrong and
- * hiding that reads as a bug.
+ * How a reading should read on screen.
+ *
+ * Judged on the *rounded* number, because that is the number the viewer sees: 67.6 °F shows
+ * as "68" and colouring it red under a 68–80 range makes the screen argue with itself.
+ *
+ * Three levels, matching the chart's zones. "watch" is outside the normal band but short of
+ * the alarm threshold — a freezer in defrost, an AC that just cycled off. It is worth
+ * noticing and not worth waking anyone up for, so it is amber rather than red.
  */
-export function isOutOfRange(tempF: number, u: { rangeMinF: number; rangeMaxF: number }): boolean {
-  return tempF < u.rangeMinF || tempF > u.rangeMaxF;
+export function tempLevel(
+  tempF: number,
+  u: { rangeMinF: number; rangeMaxF: number; alertMinF?: number | null; alertMaxF?: number | null },
+): TempLevel {
+  const t = Math.round(tempF);
+  const alertLo = u.alertMinF ?? u.rangeMinF;
+  const alertHi = u.alertMaxF ?? u.rangeMaxF;
+  if (t < alertLo || t > alertHi) return "bad";
+  if (t < u.rangeMinF || t > u.rangeMaxF) return "watch";
+  return "normal";
 }
+
+/** Convenience for the places that only care whether the number has left the normal band. */
+export function isOutOfRange(
+  tempF: number,
+  u: { rangeMinF: number; rangeMaxF: number; alertMinF?: number | null; alertMaxF?: number | null },
+): boolean {
+  return tempLevel(tempF, u) !== "normal";
+}
+
+/** Tailwind text colour for a level. */
+export const TEMP_LEVEL_CLASS: Record<TempLevel, string> = {
+  normal: "",
+  watch: "text-warn",
+  bad: "text-alert",
+};
 
 /** "2h 45m", or "dd:hh:mm" once it exceeds a day. */
 export function formatDuration(sinceIso: string, now: number = Date.now()): string {
