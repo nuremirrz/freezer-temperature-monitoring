@@ -75,7 +75,9 @@ function bandsFor(u: {
         { from: warnAt, to: null, color: C.alert },
       ],
       thresholds: [
-        { at: freezeAt, label: `Freeze Risk ${freezeAt}°F`, color: C.freeze },
+        // The line sits at the bottom of the normal band, so it has to say "below" — at 33
+        // itself a cooler is fine; it is 32 and under that puts produce at risk.
+        { at: freezeAt, label: `Freeze Risk below ${freezeAt}°F`, color: C.freeze },
         { at: normalMax, label: `Normal ${normalMax}°F`, color: C.ok },
         { at: warnAt, label: `Warning ${warnAt}°F`, color: C.alert },
       ],
