@@ -19,6 +19,9 @@ import { useLiveStore } from "@/store/useLiveStore";
 /* Palette — from globals.css, so the chart matches the rest of the app */
 /* ------------------------------------------------------------------ */
 
+/** Water freezes at 32 °F — above it a freezer's contents start to thaw, whatever the range says. */
+const MELTING_POINT_F = 32;
+
 const C = {
   ok: "#16a34a",
   warn: "#d97706",
@@ -26,6 +29,7 @@ const C = {
   freeze: "#2970ff",
   grid: "#eaecf0",
   axis: "#98a2b3",
+  melt: "#667085",
   room: "#e5484d",
   duct: "#2970ff",
 } as const;
@@ -79,6 +83,7 @@ function bandsFor(u: {
   }
 
   // Freezers, and anything else judged by a single probe
+  const isFreezer = u.type === "freezer" || u.type === "walk_in_freezer";
   return {
     zones: [
       { from: null, to: normalMax, color: C.ok },
@@ -88,6 +93,11 @@ function bandsFor(u: {
     thresholds: [
       { at: normalMax, label: `Normal ${normalMax}°F`, color: C.ok },
       { at: warnAt, label: `Warning ${warnAt}°F`, color: C.alert },
+      // Not a rule of ours — a fact about water. The reference marks it because a freezer
+      // past it is not merely warm, it is thawing.
+      ...(isFreezer && warnAt < MELTING_POINT_F
+        ? [{ at: MELTING_POINT_F, label: `Melting point ${MELTING_POINT_F}°F`, color: C.melt }]
+        : []),
     ],
   };
 }
@@ -268,8 +278,8 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                 {/* Kept lighter than the AC fills: cold storage already has coloured zones
                     behind the line, and a heavy wash on top of them turns to mud. */}
                 <linearGradient id="fillCold" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={C.alert} stopOpacity={0.18} />
-                  <stop offset="100%" stopColor={C.alert} stopOpacity={0} />
+                  <stop offset="0%" stopColor={C.alert} stopOpacity={0.3} />
+                  <stop offset="100%" stopColor={C.alert} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
 
