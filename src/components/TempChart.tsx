@@ -265,6 +265,12 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   <stop offset="0%" stopColor={C.duct} stopOpacity={0.26} />
                   <stop offset="100%" stopColor={C.duct} stopOpacity={0.02} />
                 </linearGradient>
+                {/* Kept lighter than the AC fills: cold storage already has coloured zones
+                    behind the line, and a heavy wash on top of them turns to mud. */}
+                <linearGradient id="fillCold" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.alert} stopOpacity={0.18} />
+                  <stop offset="100%" stopColor={C.alert} stopOpacity={0} />
+                </linearGradient>
               </defs>
 
               {/* Zones first, so every line and label sits on top of them */}
@@ -390,7 +396,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   dataKey="tempF"
                   stroke={isAC ? C.room : C.alert}
                   strokeWidth={1.25}
-                  fill={isAC ? "url(#fillRoom)" : "none"}
+                  fill={isAC ? "url(#fillRoom)" : "url(#fillCold)"}
                   dot={false}
                   isAnimationActive={false}
                 />
