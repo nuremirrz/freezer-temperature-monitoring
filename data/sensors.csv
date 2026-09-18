@@ -15,9 +15,10 @@
 # label      optional. Installer's label for the probe, e.g. AC1-kitchen
 #
 location,dev_eui,device_id,node_type,interval,channel,unit,model,label
-Burger King #1025,A84041784362379C,draginotst2,LTC2,120,1,Freezer - Back
-Burger King #1025,A84041784362379C,draginotst2,LTC2,120,2,Freezer - Front
-Burger King #1025,A84041B54D625182,draginotst,LHT65N,120,1,Reach-in Freezer
+# draginotst and draginotst2 — the bench pair — used to sit here under an invented Teaneck
+# restaurant. That restaurant was removed on 12 Sep, so their rows go too. They are still
+# powered on and still transmitting: every uplink lands in UnknownUplink, which is harmless
+# but is most of that table. Turning them off would stop it.
 
 # BK6816 Norco — 1666 Second St, Norco, CA 92860 (gateway a84041ffff2e3af4)
 # Source: "Qimby units list.xlsx", sheet Sensors.
@@ -31,3 +32,17 @@ Burger King #6816,A84041E3C4625185,bk6816-norco-ac1,LHT65N,300,1,AC1 - Kitchen,L
 Burger King #6816,A84041A7145E2B76,bk6816-norco-ac2,,300,1,AC2 - Dining,LHT65S-NE117,AC2-dining
 Burger King #6816,A84041A3C562517C,bk6816-norco-ac3,LHT65N,300,1,AC3 - Dining,LHT65N-NE117,AC3-dining
 Burger King #6816,A84041DBBD5E2B78,bk6816-norco-ac4,,300,1,AC4 - Kitchen,LHT65S-NE117,AC4-kitchen
+
+# BK6399 Whittier — 11125 Washington Blvd, Whittier, CA 90606 (gateway a8404120e40c4169)
+# Source: "Qimby units list (2).xlsx", sheet Sensors.
+#
+# The two LTC2-HT air conditioners have no built-in air sensor, only two external probes.
+# Channel 2 is the room and channel 1 is the duct: over the first two hours channel 1 swung
+# 44–86 °F with the compressor while channel 2 sat at 61 °F either side of a tenth of a
+# degree. Only the room channel is wired to the unit; the ingest picks the other one up as
+# supply air by itself.
+Burger King #6399,A840414CA15E2B79,bk6399-whitter-wic,LHT65N,1200,1,Walk-in Cooler,LHT65S-NE117,Walk-in Cooler
+Burger King #6399,A8404171E55E2B7A,bk6399-whitter-wif,LHT65N,1200,1,Walk-in Freezer,LHT65S-NE117,Walk-in Freezer
+Burger King #6399,A84041E0555E2B7B,bk6399-whitter-ac1,LHT65N,300,1,AC1 - Kitchen,LHT65S-NE117,AC1-kitchen
+Burger King #6399,A840413A675FAFBF,bk6399-whitter-ac2,LTC2,300,2,AC2 - Kitchen,LTC2-HT,AC2-kitchen
+Burger King #6399,A84041A7C15FAFBC,bk6399-whitter-ac3,LTC2,300,2,AC3 - Dining,LTC2-HT,AC3-dining

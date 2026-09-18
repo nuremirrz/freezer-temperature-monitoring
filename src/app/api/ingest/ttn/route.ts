@@ -100,10 +100,15 @@ export async function POST(req: NextRequest) {
 
   // Readings — one per channel that is both reporting and wired to a unit.
   //
-  // An AC is the exception: the probe hangs in the supply duct, and the client judges an air
-  // conditioner by the room it is supposed to be cooling ("АС с дактов нерелевантное
-  // измерение"). So for those units the reading is the built-in air sensor, and the duct
-  // value is kept on the sensor as supply air.
+  // An AC is the exception: its probe hangs in the supply duct, and the client judges an air
+  // conditioner by the room it is meant to be cooling ("АС с дактов нерелевантное
+  // измерение"). Where that room reading comes from depends on the hardware:
+  //
+  //   LHT65N/S — a built-in air sensor reports it, and the single probe is the duct.
+  //   LTC2     — no built-in sensor, two external probes instead. Whichever probe was wired
+  //              to the unit is the room one; the other is the duct.
+  //
+  // Either way the unit stores the room as its reading and the duct beside it.
   const inserted: { unitId: string; channel: number; tempF: number }[] = [];
   const unmapped: number[] = [];
   const noRoomTemp: number[] = [];
@@ -114,10 +119,16 @@ export async function POST(req: NextRequest) {
       continue;
     }
     const isAC = mapping.unit?.type === "ac";
-    const tempF = isAC ? u.ambientTempF : ch.tempF;
+    const hasBuiltInAir = u.ambientTempF !== undefined;
+    const tempF = isAC && hasBuiltInAir ? u.ambientTempF : ch.tempF;
+    const ductTempF = !isAC
+      ? null
+      : hasBuiltInAir
+        ? ch.tempF
+        : (u.channels.find((c) => c.channel !== ch.channel)?.tempF ?? null);
     if (tempF === undefined) {
-      // An AC whose uplink carried no room temperature: recording the duct value instead
-      // would quietly compare the wrong number against the unit's range.
+      // An AC whose uplink carried no room temperature at all: recording the duct value
+      // instead would quietly compare the wrong number against the unit's range.
       noRoomTemp.push(ch.channel);
       continue;
     }
@@ -129,7 +140,7 @@ export async function POST(req: NextRequest) {
           channel: ch.channel,
           tempF,
           // Kept beside it so the AC chart can draw the duct line over time, not just now
-          probeTempF: isAC ? ch.tempF : null,
+          probeTempF: ductTempF,
           measuredAt: u.receivedAt,
         },
       ],
