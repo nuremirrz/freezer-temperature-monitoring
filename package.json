@@ -23,7 +23,8 @@
     "clean:testdata": "tsx scripts/clean-test-data.mts",
     "access:grant": "tsx scripts/grant-access.mts",
     "locations:setup": "tsx scripts/setup-locations.mts",
-    "backfill:unknown": "tsx scripts/backfill-unknown.mts"
+    "backfill:unknown": "tsx scripts/backfill-unknown.mts",
+    "mail:test": "tsx scripts/mail-test.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
