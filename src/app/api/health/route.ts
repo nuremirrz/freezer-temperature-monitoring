@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { notificationHealth } from "@/lib/notify";
-import { mailerMode } from "@/lib/auth/mailer";
+import { mailStatus } from "@/lib/auth/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,8 @@ export async function GET() {
       notifications: notificationHealth(),
       // "console" means confirmation and reset links are only being printed to this log —
       // nobody can finish signing up or recover a password until a provider is configured.
-      mail: { channel: mailerMode() },
+      // A non-zero `failures` means one is configured and rejecting us.
+      mail: mailStatus(),
       time: now.toISOString(),
     });
   } catch (err) {

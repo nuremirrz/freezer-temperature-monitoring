@@ -1,5 +1,5 @@
 import "./load-env";
-import { mailerMode, sendMail } from "../src/lib/auth/mailer";
+import { mailerMode, mailStatus, sendMail } from "../src/lib/auth/mailer";
 import { resetPasswordMail } from "../src/lib/auth/emails";
 
 /**
@@ -32,22 +32,30 @@ if (mailerMode() === "console") {
 }
 
 const mail = resetPasswordMail(to, "https://example.invalid/reset?token=mail-test-not-a-real-link");
-try {
-  await sendMail(mail);
-  if (mailerMode() === "console") {
-    console.log(`\nЭто был вывод в консоль, а не письмо. Задай SMTP_URL, чтобы отправить по-настоящему.`);
-  } else {
-    console.log(`\n✓ Сервер принял письмо. Тема: "${mail.subject}"`);
-    console.log(`  Принял — не значит «доставил»: проверь «Входящие», а если пусто, «Спам» и «Промоакции».`);
-  }
-} catch (e) {
-  const err = e as { code?: string; response?: string; message: string };
-  console.error(`\n✗ Не отправилось: ${err.message}`);
-  if (err.code) console.error(`  код: ${err.code}`);
-  if (err.response) console.error(`  ответ сервера: ${err.response}`);
-  if (err.code === "EAUTH") {
-    console.error(`  Обычно это значит: двухфакторка не включена, либо в SMTP_URL обычный пароль,`);
-    console.error(`  а не пароль приложения, либо в нём остались пробелы.`);
-  }
-  process.exit(1);
+
+// sendMail reports failure rather than throwing, so that a dead mail server cannot take a
+// registration down with it. That makes the return value the only thing worth checking here.
+const ok = await sendMail(mail);
+
+if (mailerMode() === "console") {
+  console.log(`\nЭто был вывод в консоль, а не письмо. Задай SMTP_URL, чтобы отправить по-настоящему.`);
+  process.exit(0);
 }
+
+if (ok) {
+  console.log(`\n✓ Сервер принял письмо. Тема: "${mail.subject}"`);
+  console.log(`  Принял — не значит «доставил»: проверь «Входящие», а если пусто, «Спам» и «Промоакции».`);
+  process.exit(0);
+}
+
+const err = mailStatus().lastError ?? "(без подробностей)";
+console.error(`\n✗ Не отправилось: ${err}`);
+if (/Invalid login|535|BadCredentials/i.test(err)) {
+  console.error(`\n  Google не принял логин с паролем. Обычно это одно из трёх:`);
+  console.error(`    • в SMTP_URL обычный пароль от ящика, а нужен пароль приложения;`);
+  console.error(`    • в пароле остались пробелы — Google показывает его группами, это оформление;`);
+  console.error(`    • на ящике не включена двухфакторка.`);
+} else if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EDNS/i.test(err)) {
+  console.error(`\n  До сервера не достучались: проверь адрес и порт (smtp.gmail.com:587).`);
+}
+process.exit(1);
