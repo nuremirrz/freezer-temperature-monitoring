@@ -1,0 +1,122 @@
+name: Daily database backup
+
+# A second copy of the database, taken every night and kept off Neon.
+#
+# Neon's free tier keeps only a few hours of history, so it cannot undo a mistake noticed the
+# next morning — and on 13 Sep a script pointed at production proved that is not hypothetical.
+# This is the copy that answers that.
+#
+# The repository is PUBLIC, and on a public repository both artifacts and run logs are readable
+# by anyone. Two consequences are wired in below: the backup is encrypted before it is uploaded,
+# with a public key so no secret is needed to encrypt, and the database host is masked out of
+# the log. Without the key configured the job fails rather than publishing the data.
+
+on:
+  schedule:
+    # 09:00 UTC — 02:00 in California, the quietest hour for the restaurants.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # The backup is restored into this before it is kept, so what gets uploaded is a copy
+      # that has been proven to load — not one that merely finished writing.
+      verify:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: verify
+          POSTGRES_DB: verify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Keep the database host out of a public log
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::secrets.DATABASE_URL is not set — nothing to back up"
+            exit 1
+          fi
+          host=$(printf '%s' "$DATABASE_URL" | sed -nE 's#.*@([^/?]+).*#\1#p')
+          [ -n "$host" ] && echo "::add-mask::$host"
+
+      - name: Refuse to run without an encryption key
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          if [ -z "$RECIPIENT" ]; then
+            echo "::error::vars.BACKUP_AGE_RECIPIENT is not set. This repository is public, so an"
+            echo "::error::unencrypted backup would be downloadable by anyone. Add the age PUBLIC"
+            echo "::error::key (age1...) as a repository variable. See docs/backups.md."
+            exit 1
+          fi
+          case "$RECIPIENT" in
+            age1*) ;;
+            *) echo "::error::BACKUP_AGE_RECIPIENT should be an age public key starting with age1"; exit 1 ;;
+          esac
+
+      - run: npm ci
+
+      - name: Take the backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:backup -- --out backup
+
+      - name: Check it is not empty
+        run: |
+          readings=$(jq -r '.counts.Reading // 0' backup/meta.json)
+          locations=$(jq -r '.counts.Location // 0' backup/meta.json)
+          echo "readings=$readings locations=$locations"
+          if [ "$readings" -lt 1 ] || [ "$locations" -lt 1 ]; then
+            echo "::error::backup holds $readings readings across $locations locations — refusing to keep it"
+            exit 1
+          fi
+
+      - name: Prove it restores
+        env:
+          TARGET: postgres://postgres:verify@127.0.0.1:5432/verify
+        run: |
+          DATABASE_URL="$TARGET" npx prisma migrate deploy
+          npm run db:restore -- --from backup --to "$TARGET" --yes
+
+      - name: Encrypt it
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq age
+          tar czf backup.tar.gz -C backup .
+          age -r "$RECIPIENT" -o "qimby-backup.tar.gz.age" backup.tar.gz
+          rm -f backup.tar.gz
+          rm -rf backup
+          ls -lh qimby-backup.tar.gz.age
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qimby-backup-${{ github.run_id }}
+          path: qimby-backup.tar.gz.age
+          retention-days: 90
+          if-no-files-found: error

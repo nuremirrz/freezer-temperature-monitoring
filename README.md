@@ -80,6 +80,9 @@ Useful scripts:
 | `npm run telegram -- --token <t>` | Find the alert group's chat id and send a test message |
 | `npm run sensors:import -- --dry-run` | Validate `data/sensors.csv` and preview the probe-to-equipment map |
 | `npm run db:studio` | Browse the database |
+| `npm run db:backup` | Copy every table to gzipped NDJSON — see [docs/backups.md](docs/backups.md) |
+| `npm run db:restore -- --from <dir> --to <url>` | Write a backup into a database (dry run without `--yes`) |
+| `npm run mail:test -- --to you@example.com` | Send one real e-mail through `SMTP_URL` and report what the server said |
 
 ### Data model (Prisma)
 
