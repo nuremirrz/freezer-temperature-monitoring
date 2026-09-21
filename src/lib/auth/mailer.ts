@@ -14,10 +14,64 @@ export interface Mail {
   html?: string;
 }
 
-export type MailerMode = "smtp" | "console";
+export type MailerMode = "brevo" | "smtp" | "console";
 
+/**
+ * How mail leaves the building.
+ *
+ * "brevo" goes out over HTTPS and is preferred wherever it is configured, because SMTP does not
+ * work everywhere: Render blocks outbound 587 and 465, so the same credentials that send fine
+ * from a laptop time out in production. Port 443 is never blocked — it is the web.
+ */
 export function mailerMode(): MailerMode {
-  return process.env.SMTP_URL ? "smtp" : "console";
+  if (process.env.BREVO_API_KEY) return "brevo";
+  if (process.env.SMTP_URL) return "smtp";
+  return "console";
+}
+
+const DEFAULT_FROM = "Qimby <no-reply@qimby.app>";
+
+export interface Address {
+  email: string;
+  name?: string;
+}
+
+/** Splits `Name <a@b.c>` into its parts; a bare address comes back without a name. */
+export function parseAddress(value: string): Address {
+  const m = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(value);
+  if (!m) return { email: value.trim() };
+  const name = m[1].replace(/^"|"$/g, "").trim();
+  return name ? { email: m[2].trim(), name } : { email: m[2].trim() };
+}
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Brevo's transactional endpoint. Throws with the server's own words when it refuses. */
+async function sendViaBrevo(mail: Mail): Promise<void> {
+  const replyTo = process.env.MAIL_REPLY_TO;
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": process.env.BREVO_API_KEY as string,
+      "content-type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: parseAddress(process.env.MAIL_FROM ?? DEFAULT_FROM),
+      to: [{ email: mail.to }],
+      subject: mail.subject,
+      // htmlContent is required by the API; a plain-text-only mail still needs a body.
+      htmlContent: mail.html ?? `<pre>${escapeHtml(mail.text)}</pre>`,
+      textContent: mail.text,
+      ...(replyTo ? { replyTo: parseAddress(replyTo) } : {}),
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Brevo ${res.status}: ${body.slice(0, 200)}`);
+  }
 }
 
 export interface MailStatus {
@@ -91,9 +145,14 @@ export async function sendMail(mail: Mail): Promise<boolean> {
     return true;
   }
   try {
+    if (mailerMode() === "brevo") {
+      await sendViaBrevo(mail);
+      lastOkAt = new Date().toISOString();
+      return true;
+    }
     transport ??= await buildTransport(new URL(process.env.SMTP_URL as string));
     await transport.sendMail({
-      from: process.env.MAIL_FROM ?? "Qimby <no-reply@qimby.app>",
+      from: process.env.MAIL_FROM ?? DEFAULT_FROM,
       // A no-reply address that silently swallows replies is worse than no address at all: the
       // one person who writes back to say "the link didn't work" is the one worth hearing from.
       ...(process.env.MAIL_REPLY_TO ? { replyTo: process.env.MAIL_REPLY_TO } : {}),

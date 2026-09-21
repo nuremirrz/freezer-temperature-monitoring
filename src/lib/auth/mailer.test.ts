@@ -13,7 +13,7 @@ const { sendMailMock, createTransportMock } = vi.hoisted(() => {
 vi.mock("nodemailer", () => ({ default: { createTransport: createTransportMock } }));
 vi.mock("node:dns/promises", () => ({ resolve4: async () => ["142.251.127.108"] }));
 
-import { sendMail, mailStatus, mailerMode, resetMailerForTests, type Mail } from "./mailer";
+import { sendMail, mailStatus, mailerMode, parseAddress, resetMailerForTests, type Mail } from "./mailer";
 
 const MAIL: Mail = { to: "owner@example.com", subject: "Reset your password — Qimby", text: "link" };
 
@@ -29,6 +29,7 @@ describe("sendMail", () => {
     delete process.env.SMTP_URL;
     delete process.env.MAIL_FROM;
     delete process.env.MAIL_REPLY_TO;
+    delete process.env.BREVO_API_KEY;
   });
 
   afterEach(() => {
@@ -142,5 +143,88 @@ describe("sendMail", () => {
     await sendMail(MAIL);
 
     expect(createTransportMock).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * Render blocks outbound 587 and 465, so the SMTP credentials that worked from a laptop timed
+   * out in production and no one could reset a password. HTTPS on 443 is the way out, and it
+   * has to win over SMTP wherever both are configured.
+   */
+  describe("over HTTPS", () => {
+    const fetchMock = vi.fn();
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", fetchMock);
+      fetchMock.mockReset().mockResolvedValue({ ok: true, status: 201, text: async () => "{}" });
+      process.env.BREVO_API_KEY = "test-key";
+      process.env.MAIL_FROM = "Qimby <qimby.app@gmail.com>";
+    });
+
+    it("is preferred over SMTP when both are configured", async () => {
+      process.env.SMTP_URL = "smtp://u:p@smtp.gmail.com:587";
+
+      expect(mailerMode()).toBe("brevo");
+      await expect(sendMail(MAIL)).resolves.toBe(true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(sendMailMock).not.toHaveBeenCalled();
+    });
+
+    it("posts the message the way the API expects it", async () => {
+      process.env.MAIL_REPLY_TO = "support@example.com";
+
+      await sendMail({ ...MAIL, html: "<p>link</p>" });
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe("https://api.brevo.com/v3/smtp/email");
+      expect(init.method).toBe("POST");
+      expect((init.headers as Record<string, string>)["api-key"]).toBe("test-key");
+
+      const body = JSON.parse(init.body as string);
+      expect(body.sender).toEqual({ email: "qimby.app@gmail.com", name: "Qimby" });
+      expect(body.to).toEqual([{ email: MAIL.to }]);
+      expect(body.subject).toBe(MAIL.subject);
+      expect(body.htmlContent).toBe("<p>link</p>");
+      expect(body.textContent).toBe(MAIL.text);
+      expect(body.replyTo).toEqual({ email: "support@example.com" });
+    });
+
+    it("still sends a body when the mail is text only", async () => {
+      await sendMail({ ...MAIL, text: "5 < 10 & rising" });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(body.htmlContent).toBe("<pre>5 &lt; 10 &amp; rising</pre>");
+    });
+
+    it("records the server's own words when it refuses", async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: async () => '{"message":"Key not found"}',
+      });
+
+      await expect(sendMail(MAIL)).resolves.toBe(false);
+
+      expect(mailStatus().lastError).toContain("401");
+      expect(mailStatus().lastError).toContain("Key not found");
+      expect(mailStatus().failures).toBe(1);
+    });
+  });
+});
+
+describe("parseAddress", () => {
+  it("splits a name from its address", () => {
+    expect(parseAddress("Qimby <qimby.app@gmail.com>")).toEqual({
+      email: "qimby.app@gmail.com",
+      name: "Qimby",
+    });
+  });
+
+  it("takes a bare address as-is", () => {
+    expect(parseAddress("qimby.app@gmail.com")).toEqual({ email: "qimby.app@gmail.com" });
+  });
+
+  it("drops the quotes around a quoted name", () => {
+    expect(parseAddress('"Qimby Alerts" <a@b.co>')).toEqual({ email: "a@b.co", name: "Qimby Alerts" });
   });
 });
