@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import { resolve4 } from "node:dns/promises";
 
 /**
  * Outgoing e-mail. With SMTP_URL set, messages go through that SMTP server (the provider is a
@@ -41,6 +42,36 @@ export function mailStatus(): MailStatus {
 let transport: Transporter | null = null;
 
 /**
+ * Builds the SMTP transport, pinned to an IPv4 address.
+ *
+ * Render's containers have no route out over IPv6, and smtp.gmail.com publishes both an A and
+ * an AAAA record. nodemailer resolves the name itself and reached for the AAAA, which failed
+ * with ENETUNREACH while the same URL worked from a laptop — the one difference being whose
+ * network it ran on. Resolving the A record here keeps it on a road that exists. The hostname
+ * still travels as the TLS server name, so the certificate matches the address we dialled.
+ *
+ * `family: 4` would be the obvious fix and does nothing: nodemailer assembles its own connect
+ * options and never forwards it.
+ */
+async function buildTransport(url: URL): Promise<Transporter> {
+  const [ipv4] = await resolve4(url.hostname);
+  return nodemailer.createTransport({
+    host: ipv4,
+    servername: url.hostname,
+    port: Number(url.port) || 587,
+    secure: url.port === "465",
+    // Never hand the password to a server that has not put the connection under TLS first.
+    requireTLS: true,
+    auth: { user: decodeURIComponent(url.username), pass: decodeURIComponent(url.password) },
+    // nodemailer waits two minutes to give up on a connection. A password reset that hangs the
+    // browser for two minutes before failing is worse than one that fails in ten seconds.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+}
+
+/**
  * Sends one message. Never throws.
  *
  * A wrong password in SMTP_URL used to take the whole request down with it, and registration
@@ -60,7 +91,7 @@ export async function sendMail(mail: Mail): Promise<boolean> {
     return true;
   }
   try {
-    transport ??= nodemailer.createTransport(process.env.SMTP_URL);
+    transport ??= await buildTransport(new URL(process.env.SMTP_URL as string));
     await transport.sendMail({
       from: process.env.MAIL_FROM ?? "Qimby <no-reply@qimby.app>",
       // A no-reply address that silently swallows replies is worse than no address at all: the
@@ -71,6 +102,8 @@ export async function sendMail(mail: Mail): Promise<boolean> {
     lastOkAt = new Date().toISOString();
     return true;
   } catch (err) {
+    // Rebuild next time: the address we pinned may have moved, or the transport may be wedged.
+    transport = null;
     lastFailedAt = new Date().toISOString();
     lastError = (err instanceof Error ? err.message : String(err)).slice(0, 300);
     failures++;

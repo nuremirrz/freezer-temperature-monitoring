@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-const sendMailMock = vi.fn();
-vi.mock("nodemailer", () => ({
-  default: { createTransport: () => ({ sendMail: sendMailMock }) },
-}));
+// vi.mock is hoisted above the file's own declarations, so the mocks have to be created in a
+// hoisted block too — otherwise the factory runs before the consts exist.
+const { sendMailMock, createTransportMock } = vi.hoisted(() => {
+  const sendMailMock = vi.fn();
+  return { sendMailMock, createTransportMock: vi.fn(() => ({ sendMail: sendMailMock })) };
+});
+vi.mock("nodemailer", () => ({ default: { createTransport: createTransportMock } }));
+vi.mock("node:dns/promises", () => ({ resolve4: async () => ["142.251.127.108"] }));
 
 import { sendMail, mailStatus, mailerMode, resetMailerForTests, type Mail } from "./mailer";
 
@@ -14,6 +18,7 @@ describe("sendMail", () => {
 
   beforeEach(() => {
     sendMailMock.mockReset().mockResolvedValue({ accepted: [MAIL.to] });
+    createTransportMock.mockClear();
     resetMailerForTests();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -84,5 +89,54 @@ describe("sendMail", () => {
     await sendMail(MAIL);
 
     expect(mailStatus().failures).toBe(2);
+  });
+  /**
+   * The bug this guards. Render's containers have no IPv6 route, smtp.gmail.com publishes an
+   * AAAA record, and nodemailer reached for it — ENETUNREACH on production while the identical
+   * URL worked from a laptop. Dialling the A record directly is what fixed it; the hostname has
+   * to survive as the TLS server name or the certificate stops matching.
+   */
+  it("dials an IPv4 address while keeping the hostname for TLS", async () => {
+    process.env.SMTP_URL = "smtp://qimby.app@gmail.com:abcdefghijklmnop@smtp.gmail.com:587";
+
+    await sendMail(MAIL);
+
+    const opts = createTransportMock.mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect(opts.host).toBe("142.251.127.108");
+    expect(opts.servername).toBe("smtp.gmail.com");
+    expect(opts.port).toBe(587);
+    expect(opts.secure).toBe(false);
+    expect(opts.requireTLS).toBe(true);
+  });
+
+  it("reads the login out of a URL that carries an @ in the username", async () => {
+    process.env.SMTP_URL = "smtp://qimby.app@gmail.com:abcdefghijklmnop@smtp.gmail.com:587";
+
+    await sendMail(MAIL);
+
+    const opts = createTransportMock.mock.calls[0][0] as unknown as { auth: { user: string; pass: string } };
+    expect(opts.auth.user).toBe("qimby.app@gmail.com");
+    expect(opts.auth.pass).toBe("abcdefghijklmnop");
+  });
+
+  it("gives up on a dead server in seconds, not in nodemailer's two minutes", async () => {
+    process.env.SMTP_URL = "smtp://u:p@smtp.example.com:587";
+
+    await sendMail(MAIL);
+
+    const opts = createTransportMock.mock.calls[0][0] as unknown as Record<string, number>;
+    expect(opts.connectionTimeout).toBeLessThanOrEqual(15_000);
+    expect(opts.greetingTimeout).toBeLessThanOrEqual(15_000);
+  });
+
+  it("builds a fresh transport after a failure, so a moved address is picked up", async () => {
+    process.env.SMTP_URL = "smtp://u:p@smtp.example.com:587";
+    sendMailMock.mockRejectedValueOnce(new Error("connect ENETUNREACH"));
+
+    await sendMail(MAIL);
+    sendMailMock.mockResolvedValue({});
+    await sendMail(MAIL);
+
+    expect(createTransportMock).toHaveBeenCalledTimes(2);
   });
 });
