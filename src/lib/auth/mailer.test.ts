@@ -4,7 +4,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // hoisted block too — otherwise the factory runs before the consts exist.
 const { sendMailMock, createTransportMock } = vi.hoisted(() => {
   const sendMailMock = vi.fn();
-  return { sendMailMock, createTransportMock: vi.fn(() => ({ sendMail: sendMailMock })) };
+  // Typed with its argument so mock.calls[0][0] is reachable — the options are the assertion.
+  const createTransportMock = vi.fn<(options: Record<string, unknown>) => { sendMail: typeof sendMailMock }>(
+    () => ({ sendMail: sendMailMock }),
+  );
+  return { sendMailMock, createTransportMock };
 });
 vi.mock("nodemailer", () => ({ default: { createTransport: createTransportMock } }));
 vi.mock("node:dns/promises", () => ({ resolve4: async () => ["142.251.127.108"] }));
