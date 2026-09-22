@@ -32,8 +32,6 @@ async function call<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
 }
 
 export const authApi = {
-  register: (data: { name?: string; email: string; password: string }) =>
-    call<{ status: string; devVerifyUrl?: string }>("/api/auth/register", { method: "POST", body: JSON.stringify(data) }),
   login: (data: { email: string; password: string; rememberMe: boolean }) =>
     call<{ user: { email: string } }>("/api/auth/login", { method: "POST", body: JSON.stringify(data) }),
   logout: () => call<{ status: string }>("/api/auth/logout", { method: "POST", body: "{}" }),

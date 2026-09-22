@@ -72,7 +72,8 @@ export async function registerUser(input: RegisterInput, base: string): Promise<
       email: input.email,
       name: input.name?.trim() || null,
       passwordHash: await hashPassword(input.password),
-      role: "admin",
+      // No role here on purpose: the schema's default is the one with no visibility. Handing
+      // out `admin` was what made an open sign-up form a way into every restaurant.
     },
   });
   const link = await sendVerification(user, base);

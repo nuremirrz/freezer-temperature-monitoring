@@ -172,10 +172,7 @@ function LoginForm() {
       </button>
 
       <div className="mt-5 border-t border-line-soft pt-4 text-center text-sm text-muted">
-        Don&apos;t have an account?{" "}
-        <Link href="/register" className="font-medium text-accent hover:underline">
-          Create account
-        </Link>
+        Accounts are created by invitation — ask the owner of your organization for a link.
       </div>
 
       <LockNote />
