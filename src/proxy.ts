@@ -30,8 +30,6 @@ export const config = {
   matcher: [
     "/",
     "/locations/:path*",
-    "/maintenance/:path*",
-    "/settings",
     "/login",
     "/register",
     "/forgot-password",
