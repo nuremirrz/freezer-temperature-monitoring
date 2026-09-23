@@ -26,6 +26,9 @@ import type { UnitType } from "../src/generated/prisma/client";
  *
  * A freezer's low alert sits out of reach on purpose — it cannot be too cold. A kitchen is
  * allowed to run warmer than a dining room, 80 against 75.
+ *
+ * The duct's 56 °F is the client's number, from the chart spec of 13 Sep. It is drawn as a line
+ * on the AC chart and decides nothing: supply air above it means the unit is not cooling.
  */
 interface UnitSeed {
   name: string;
@@ -43,8 +46,8 @@ interface UnitSeed {
 
 const COOLER = { type: "walk_in_cooler", rangeMinF: 33, rangeMaxF: 40, alertMinF: 33, alertMaxF: 50 } as const;
 const FREEZER = { type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 } as const;
-const AC_KITCHEN = { type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85, probeMinF: 50, probeMaxF: 60 } as const;
-const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 75, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 60 } as const;
+const AC_KITCHEN = { type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85, probeMinF: 50, probeMaxF: 56 } as const;
+const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 75, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 56 } as const;
 
 interface LocationSeed {
   name: string;
