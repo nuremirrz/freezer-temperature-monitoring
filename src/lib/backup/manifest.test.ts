@@ -69,7 +69,7 @@ describe("what a backup carries", () => {
 
   it("still keeps the readings and the equipment they belong to", () => {
     const written = BACKED_UP_MODELS.map((m) => m.name);
-    for (const table of ["Reading", "Alert", "Unit", "Sensor", "Location"]) {
+    for (const table of ["Reading", "Alert", "Unit", "Sensor", "Location", "Organization", "District", "UserDistrict"]) {
       expect(written).toContain(table);
     }
   });
@@ -84,5 +84,10 @@ describe("what a backup carries", () => {
     expect(at("Sensor")).toBeLessThan(at("SensorChannel"));
     expect(at("Unit")).toBeLessThan(at("Alert"));
     expect(at("User")).toBeLessThan(at("LocationAccess"));
+    expect(at("Organization")).toBeLessThan(at("District"));
+    expect(at("Organization")).toBeLessThan(at("User"));
+    expect(at("District")).toBeLessThan(at("Location"));
+    expect(at("User")).toBeLessThan(at("UserDistrict"));
+    expect(at("District")).toBeLessThan(at("UserDistrict"));
   });
 });

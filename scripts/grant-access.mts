@@ -37,7 +37,8 @@ const all = (name: string) =>
   argv.reduce<string[]>((acc, a, i) => (a === `--${name}` && argv[i + 1] ? [...acc, argv[i + 1]] : acc), []);
 
 const email = flag("email")?.trim().toLowerCase();
-const role = (flag("role") ?? "client") as "admin" | "client";
+const ROLES = ["admin", "owner", "district_manager", "technician"] as const;
+const role = (flag("role") ?? "technician") as (typeof ROLES)[number];
 const name = flag("name");
 const locations = all("location");
 const revoke = all("revoke");
@@ -51,8 +52,8 @@ if (!email) {
   console.error("--email is required");
   process.exit(1);
 }
-if (!["admin", "client"].includes(role)) {
-  console.error(`--role must be admin or client, got "${role}"`);
+if (!ROLES.includes(role)) {
+  console.error(`--role must be one of ${ROLES.join(", ")}, got "${role}"`);
   process.exit(1);
 }
 

@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { generateToken, hashToken } from "./tokens";
+import type { UserRole } from "@/generated/prisma/client";
 
 export const SESSION_COOKIE = "qimby_session";
 const DAY_MS = 24 * 60 * 60_000;
@@ -13,7 +14,9 @@ export interface SessionUser {
   id: string;
   email: string;
   name: string | null;
-  role: "admin" | "client";
+  /// Taken from the schema rather than written out here, so adding a role cannot leave this
+  /// behind still believing there are two of them.
+  role: UserRole;
   emailVerifiedAt: Date | null;
   createdAt: Date;
 }

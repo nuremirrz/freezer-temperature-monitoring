@@ -22,11 +22,71 @@ enum AlertType {
   offline
 }
 
+/// Who someone is, and therefore what they can reach. One role per user.
 enum UserRole {
-  /// Qimby staff: every location, and the only role that may change a unit's settings.
+  /// Qimby's own team. Above the organizations rather than inside one, so an admin has no
+  /// organizationId and sees everything. This is us, not a customer.
   admin
-  /// A restaurant or a technician: sees exactly the locations granted in LocationAccess.
-  client
+  /// Owns an organization and sees all of it. There may be more than one, and one of them
+  /// may add another — but never the last one away, or nobody is left to let people in.
+  owner
+  /// Sees the locations of the districts assigned to them. May invite technicians, and only
+  /// technicians: a manager who could mint managers would widen their own reach.
+  district_manager
+  /// Sees the locations assigned to them, one by one. Files the work reports.
+  technician
+}
+
+/// Where an account is in its life. Accounts are never deleted — a technician who leaves still
+/// authored the reports that explain what happened to a compressor two years ago.
+enum UserStatus {
+  /// Invited, has not set a password yet.
+  invited
+  /// Can sign in.
+  active
+  /// Cannot sign in, sessions revoked, still named on everything they wrote.
+  deactivated
+}
+
+/// A customer. One today — Steven's — and the column exists everywhere from the start so that
+/// the second one costs a row rather than a migration.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  users     User[]
+  districts District[]
+  locations Location[]
+}
+
+/// A group of locations under one or more district managers. A location may have no district,
+/// in which case only the owners of its organization can see it.
+model District {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locations    Location[]
+  managers     UserDistrict[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+/// Which districts a district manager covers. Several managers may share a district.
+model UserDistrict {
+  userId     String
+  districtId String
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  district District @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  @@id([userId, districtId])
+  @@index([userId])
 }
 
 enum AuthTokenType {
@@ -38,21 +98,28 @@ enum AuthTokenType {
 /// touches the database or the logs. Sensor data has no relation to users, so deleting an
 /// account never deletes readings.
 model User {
-  id              String    @id @default(cuid())
-  email           String    @unique // stored lowercase
+  id              String     @id @default(cuid())
+  email           String     @unique // stored lowercase
   name            String?
   passwordHash    String
   /// New accounts start with no visibility at all — an account is useless until someone
   /// grants it a location, which is what stops an open sign-up form from handing a stranger
   /// the whole estate.
-  role            UserRole  @default(client)
-  emailVerifiedAt DateTime? @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+  role            UserRole   @default(technician)
+  /// Set for everyone inside a customer. Null for Qimby's own team, who stand outside.
+  organizationId  String?
+  status          UserStatus @default(invited)
+  emailVerifiedAt DateTime?  @db.Timestamptz(6)
+  createdAt       DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @db.Timestamptz(6)
 
-  sessions Session[]
-  tokens   AuthToken[]
-  access   LocationAccess[]
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions     Session[]
+  tokens       AuthToken[]
+  access       LocationAccess[]
+  districts    UserDistrict[]
+
+  @@index([organizationId])
 }
 
 /// Which locations a `client` account may see. Ignored for `admin`, who sees everything.
@@ -98,21 +165,30 @@ model AuthToken {
 }
 
 model Location {
-  id        String   @id @default(cuid())
-  name      String   @unique // "Burger King #1025"
-  address   String
-  city      String
-  state     String
-  zip       String
-  lat       Float
-  lng       Float
-  timezone  String   @default("America/New_York")
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  id             String   @id @default(cuid())
+  name           String   @unique // "Burger King #1025"
+  address        String
+  city           String
+  state          String
+  zip            String
+  lat            Float
+  lng            Float
+  timezone       String   @default("America/New_York")
+  /// Which customer this belongs to. An owner sees their organization whole, districts or not.
+  organizationId String?
+  /// Null means "no district": visible to the owners, to no manager.
+  districtId     String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
-  gateways Gateway[]
-  units    Unit[]
-  sensors  Sensor[]
-  access   LocationAccess[]
+  organization Organization?    @relation(fields: [organizationId], references: [id])
+  district     District?        @relation(fields: [districtId], references: [id], onDelete: SetNull)
+  gateways     Gateway[]
+  units        Unit[]
+  sensors      Sensor[]
+  access       LocationAccess[]
+
+  @@index([organizationId])
+  @@index([districtId])
 }
 
 model Gateway {

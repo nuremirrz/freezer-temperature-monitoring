@@ -26,9 +26,12 @@ export interface BackupModel {
 }
 
 export const BACKUP_MODELS: BackupModel[] = [
+  { name: "Organization", delegate: "organization", cursor: "id" },
+  { name: "District", delegate: "district", cursor: "id" },
   { name: "User", delegate: "user", cursor: "id" },
   { name: "Location", delegate: "location", cursor: "id" },
   { name: "LocationAccess", delegate: "locationAccess", cursor: "userId" },
+  { name: "UserDistrict", delegate: "userDistrict", cursor: "userId" },
   { name: "Session", delegate: "session", cursor: "id", ephemeral: true },
   { name: "AuthToken", delegate: "authToken", cursor: "id", ephemeral: true },
   { name: "Gateway", delegate: "gateway", cursor: "id" },
