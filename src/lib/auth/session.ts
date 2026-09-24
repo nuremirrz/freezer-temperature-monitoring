@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { generateToken, hashToken } from "./tokens";
-import type { UserRole } from "@/generated/prisma/client";
+import type { UserRole, UserStatus } from "@/generated/prisma/client";
 
 export const SESSION_COOKIE = "qimby_session";
 const DAY_MS = 24 * 60 * 60_000;
@@ -17,6 +17,9 @@ export interface SessionUser {
   /// Taken from the schema rather than written out here, so adding a role cannot leave this
   /// behind still believing there are two of them.
   role: UserRole;
+  /// Null for Qimby's own team; the scope boundary for an owner or a manager.
+  organizationId: string | null;
+  status: UserStatus;
   emailVerifiedAt: Date | null;
   createdAt: Date;
 }
@@ -68,7 +71,18 @@ export async function getSession(): Promise<CurrentSession | null> {
   const session = await prisma.session.findUnique({
     where: { id: hashToken(raw) },
     include: {
-      user: { select: { id: true, email: true, name: true, role: true, emailVerifiedAt: true, createdAt: true } },
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          organizationId: true,
+          status: true,
+          emailVerifiedAt: true,
+          createdAt: true,
+        },
+      },
     },
   });
   if (!session) return null;
