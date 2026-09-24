@@ -90,6 +90,12 @@ export async function getSession(): Promise<CurrentSession | null> {
     await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
     return null;
   }
+  if (session.user.status !== "active") {
+    // Deactivating an account revokes its sessions, but one that slipped through — a race, a
+    // restore from an older copy — must not keep working. Only an active account is anyone.
+    await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
+    return null;
+  }
   return { sessionId: session.id, user: session.user, expiresAt: session.expiresAt };
 }
 

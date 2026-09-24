@@ -117,13 +117,24 @@ export async function loginUser(
   if (!user.emailVerifiedAt) {
     return fail("email_not_verified", "Confirm your e-mail address before signing in", 403);
   }
+  // Checked after the password, so a deactivated account costs the same time as a live one and
+  // the answer is only given to someone who already knew the password.
+  if (user.status === "deactivated") {
+    return fail("account_deactivated", "This account has been deactivated. Ask the owner of your organization.", 403);
+  }
+  if (user.status !== "active") {
+    return fail("account_not_active", "Finish setting up your account from the invitation link first", 403);
+  }
   await createSession(user.id, { ...meta, rememberMe: input.rememberMe });
   return { ok: true, data: { id: user.id, email: user.email, name: user.name, role: user.role } };
 }
 
 export async function requestPasswordReset(email: string, base: string): Promise<{ devResetUrl?: string }> {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return {};
+  // A deactivated account gets the same silence as an unknown address. Setting a new password
+  // is what turns an invitation into an active account, so a reset link in the wrong hands
+  // would be a way back in.
+  if (!user || user.status === "deactivated") return {};
   const raw = await issueToken(user.id, "password_reset", RESET_TTL_MS);
   const link = `${base}/reset-password?token=${raw}`;
   await sendMail(resetPasswordMail(user.email, link));
@@ -140,8 +151,17 @@ export async function requestPasswordReset(email: string, base: string): Promise
  * must not survive it.
  */
 export async function resetPassword(raw: string, password: string, meta: SessionMeta = {}): Promise<AuthResult> {
-  const token = await prisma.authToken.findUnique({ where: { id: hashToken(raw) } });
+  const token = await prisma.authToken.findUnique({
+    where: { id: hashToken(raw) },
+    include: { user: { select: { status: true } } },
+  });
   if (!token || token.type !== "password_reset" || token.usedAt || token.expiresAt.getTime() <= Date.now()) {
+    return fail("invalid_token", "This reset link is invalid or has expired", 400);
+  }
+  // A link issued before the account was deactivated is still a valid link. It must not be a
+  // way back in — and it gets the same answer as an expired one, so the link itself does not
+  // announce what happened to the account.
+  if (token.user.status === "deactivated") {
     return fail("invalid_token", "This reset link is invalid or has expired", 400);
   }
   const now = new Date();
@@ -150,7 +170,9 @@ export async function resetPassword(raw: string, password: string, meta: Session
     prisma.authToken.update({ where: { id: token.id }, data: { usedAt: now } }),
     prisma.user.update({
       where: { id: token.userId },
-      data: { passwordHash, emailVerifiedAt: { set: now } },
+      // Choosing a password is the step that turns an invitation into an account. For a reset
+      // it is already active and this changes nothing.
+      data: { passwordHash, emailVerifiedAt: { set: now }, status: "active" },
     }),
     prisma.session.deleteMany({ where: { userId: token.userId } }),
   ]);

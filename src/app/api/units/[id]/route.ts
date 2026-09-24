@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { unauthorized, sameOrigin, parseBody } from "@/lib/auth/http";
+import { visibleLocationIds, canSee } from "@/lib/auth/access";
 import { publish } from "@/lib/events";
 
 export const dynamic = "force-dynamic";
@@ -34,17 +35,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const session = await getSession();
   if (!session) return unauthorized();
   if (!sameOrigin(req)) return NextResponse.json({ message: "Bad origin" }, { status: 403 });
-  // Ranges are an engineering judgement about the equipment, not the restaurant's to set.
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ message: "Only Qimby staff can change a unit's settings" }, { status: 403 });
-  }
 
   const { id } = await ctx.params;
   const parsed = await parseBody(req, patchSchema);
   if (!parsed.ok) return parsed.response;
 
+  // Reach first, role second. A unit outside someone's scope is "not found" whatever their
+  // role, so that probing this endpoint cannot map out equipment that exists; a technician is
+  // only told "no" about a unit they can already see.
   const unit = await prisma.unit.findUnique({ where: { id }, select: { id: true, locationId: true } });
-  if (!unit) return NextResponse.json({ message: "Unit not found" }, { status: 404 });
+  const visible = await visibleLocationIds(session);
+  if (!unit || !canSee(visible, unit.locationId)) {
+    return NextResponse.json({ message: "Unit not found" }, { status: 404 });
+  }
+  // Owners and managers set ranges for what they run; a technician reads them and files the
+  // work, and the passport fields they may edit go through a different door.
+  if (session.user.role === "technician") {
+    return NextResponse.json({ message: "Technicians cannot change a unit's range" }, { status: 403 });
+  }
 
   const { rangeMinF, rangeMaxF, alertMinF, alertMaxF, probeMinF, probeMaxF, refrigerant, year } = parsed.data;
   const updated = await prisma.unit.update({
