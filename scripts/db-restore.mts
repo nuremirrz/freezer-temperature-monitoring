@@ -1,5 +1,5 @@
 import "./load-env";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
@@ -106,8 +106,17 @@ if (occupied.length) {
 const CHUNK = 1_000;
 let written = 0;
 
+const missing: string[] = [];
+
 for (const model of BACKED_UP_MODELS) {
   const file = path.join(from, `${model.name}.ndjson.gz`);
+  // An older copy has no file for a table that did not exist when it was taken. That is not a
+  // damaged backup, it is an honest one — the table stays empty and the restore goes on.
+  if (!existsSync(file)) {
+    missing.push(model.name);
+    console.log(`  · ${model.name.padEnd(16)} нет в копии — таблица останется пустой`);
+    continue;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const delegate = (db as any)[model.delegate];
   let buffer: unknown[] = [];
@@ -141,4 +150,7 @@ for (const model of BACKED_UP_MODELS) {
 }
 
 console.log(`\n✓ Восстановлено строк: ${written} из ${expected}`);
+if (missing.length) {
+  console.log(`Копия старее текущей схемы, пустыми остались: ${missing.join(", ")}`);
+}
 await db.$disconnect();

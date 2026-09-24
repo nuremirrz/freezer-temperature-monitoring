@@ -39,6 +39,13 @@ console.log(`куда:     ${outDir}\n`);
 
 const counts: Record<string, number> = {};
 const skipped: Record<string, number> = {};
+const absent: string[] = [];
+
+/** Postgres says 42P01 and Prisma says P2021 when a table is not there. */
+const isMissingTable = (e: unknown): boolean => {
+  const err = e as { code?: string; message?: string };
+  return err.code === "P2021" || err.code === "42P01" || /does not exist/i.test(err.message ?? "");
+};
 
 for (const model of BACKUP_MODELS) {
   if (model.ephemeral) {
@@ -49,7 +56,18 @@ for (const model of BACKUP_MODELS) {
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const delegate = (prisma as any)[model.delegate];
-  const total: number = await delegate.count();
+  let total: number;
+  try {
+    total = await delegate.count();
+  } catch (e) {
+    // The database is older than this build — which is the normal state of affairs right
+    // before a migration, the moment a backup is worth the most. Note it and carry on: a
+    // copy of an older database is still a copy, and refusing to take one is worse.
+    if (!isMissingTable(e)) throw e;
+    absent.push(model.name);
+    console.log(`  ${model.name.padEnd(16)} ${"—".padStart(7)} таблицы нет в базе, пропускаю`);
+    continue;
+  }
   const file = path.join(outDir, `${model.name}.ndjson.gz`);
 
   async function* rows(): AsyncGenerator<string> {
@@ -86,11 +104,15 @@ const meta: BackupMeta = {
   lastMigration: migrations[0]?.migration_name ?? null,
   counts,
   skipped,
+  ...(absent.length ? { absent } : {}),
 };
 await writeFile(path.join(outDir, "meta.json"), JSON.stringify(meta, null, 2) + "\n");
 
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 console.log(`\nВсего строк: ${total}`);
+if (absent.length) {
+  console.log(`База старее этой сборки — нет таблиц: ${absent.join(", ")}. Копия сделана без них.`);
+}
 if (Object.keys(skipped).length) {
   console.log(`Не попало в копию: ${Object.entries(skipped).map(([k, v]) => `${k} (${v})`).join(", ")} — живые ключи входа`);
 }

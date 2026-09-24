@@ -53,6 +53,14 @@ export interface BackupMeta {
   counts: Record<string, number>;
   /** Tables deliberately left out, and how many rows each had when the copy was taken. */
   skipped: Record<string, number>;
+  /**
+   * Tables this build knows about that the database did not have.
+   *
+   * A backup taken just before a migration is taken by code that already knows the tables the
+   * migration is about to add — which is exactly when a backup matters most. Recording their
+   * absence lets the copy be honest about what it is: a copy of an older database.
+   */
+  absent?: string[];
 }
 
 /** Tables actually written to a backup. */
