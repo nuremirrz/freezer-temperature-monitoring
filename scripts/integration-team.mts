@@ -155,8 +155,24 @@ check("менеджер после удаления дистрикта види�
 r = await listDistricts(S2.owner);
 check("все 3 локации снова неразмещённые", r.ok && r.data.unassigned.length === 3);
 
+console.log("\n=== admin при единственной организации ===");
+const dev = await prisma.user.findUniqueOrThrow({ where: { email: "dev@t.io" } });
+const S3 = { admin: await session(dev) };
+r = await listDistricts(S3.admin);
+check("admin без явной организации попадает в единственную", r.ok && r.data.unassigned.length === 3, r.ok ? "" : `${r.code}`);
+r = await createDistrict(S3.admin, { name: "By admin" });
+check("admin создаёт дистрикт в единственной организации", r.ok && r.data.name === "By admin");
+r = await inviteUser(S3.admin, { email: "byadmin@t.io", role: "technician", locationIds: [L1.id] }, BASE);
+check("admin приглашает в единственную организацию", r.ok && r.data.status === "invited");
+r = await listTeam(S3.admin);
+check("admin видит всех, кроме admin-ов", r.ok && !r.data.some((m: any) => m.role === "admin") && r.data.length >= 5);
+
 console.log("\n=== чужая организация ===");
 const org2 = await prisma.organization.create({ data: { name: "Other" } });
+r = await listDistricts(S3.admin);
+check("две организации → admin обязан назвать, какую → 400", !r.ok && r.status === 400 && r.code === "organization_required", `${r.code}`);
+r = await listDistricts(S3.admin, org2.id);
+check("…а с явной — работает", r.ok && r.data.districts.length === 0);
 const foreign = await mkUser("f@t.io", "technician", org2.id);
 r = await updateMember(S2.owner, foreign.id, { name: "hacked" });
 check("чужой пользователь → 404, не 403", !r.ok && r.status === 404);

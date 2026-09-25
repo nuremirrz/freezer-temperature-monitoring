@@ -56,7 +56,7 @@ async function manageable(session: CurrentSession, id: string): Promise<AuthResu
 export async function listDistricts(session: CurrentSession, organizationId?: string): Promise<AuthResult<DistrictsView>> {
   const actor = session.user;
   if (!canManageDistricts(actor)) return fail("forbidden", "Only an owner manages districts", 403);
-  const org = organizationFor(actor, organizationId);
+  const org = await organizationFor(actor, organizationId);
   if (!org.ok) return org;
 
   const [districts, unassigned] = await Promise.all([
@@ -76,7 +76,7 @@ export async function createDistrict(
 ): Promise<AuthResult<DistrictView>> {
   const actor = session.user;
   if (!canManageDistricts(actor)) return fail("forbidden", "Only an owner manages districts", 403);
-  const org = organizationFor(actor, input.organizationId);
+  const org = await organizationFor(actor, input.organizationId);
   if (!org.ok) return org;
 
   const taken = await prisma.district.findFirst({ where: { organizationId: org.data, name: input.name }, select: { id: true } });

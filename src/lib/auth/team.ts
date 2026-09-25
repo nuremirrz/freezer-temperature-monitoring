@@ -91,13 +91,17 @@ function toMember(u: MemberRow, now = Date.now()): Member {
 
 /**
  * Which organization an actor acts on. Everyone but an admin is inside exactly one; an admin
- * stands outside all of them and has to say which.
+ * stands outside all of them and has to say which — unless there is only one, in which case
+ * "the organization" can only mean that one. The moment a second exists, they must say.
  */
-export function organizationFor(actor: SessionUser, explicit?: string): AuthResult<string> {
+export async function organizationFor(actor: SessionUser, explicit?: string): Promise<AuthResult<string>> {
   if (actor.role === "admin") {
-    return explicit
-      ? { ok: true, data: explicit }
-      : fail("organization_required", "Say which organization this is for", 400);
+    if (explicit) return { ok: true, data: explicit };
+    const orgs = await prisma.organization.findMany({ select: { id: true }, take: 2 });
+    if (orgs.length === 1) return { ok: true, data: orgs[0].id };
+    return orgs.length
+      ? fail("organization_required", "Say which organization this is for", 400)
+      : fail("no_organization", "There is no organization yet — run org:setup first", 400);
   }
   return actor.organizationId
     ? { ok: true, data: actor.organizationId }
@@ -171,7 +175,7 @@ export async function inviteUser(session: CurrentSession, input: InviteInput, ba
   if (!canInvite(actor, input.role)) {
     return fail("forbidden", `You cannot invite someone as ${input.role.replace("_", " ")}`, 403);
   }
-  const org = organizationFor(actor, input.organizationId);
+  const org = await organizationFor(actor, input.organizationId);
   if (!org.ok) return org;
 
   const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
@@ -218,7 +222,7 @@ export async function listTeam(session: CurrentSession): Promise<AuthResult<Memb
       where = { role: { not: "admin" } };
       break;
     case "owner": {
-      const org = organizationFor(actor);
+      const org = await organizationFor(actor);
       if (!org.ok) return org;
       where = { organizationId: org.data };
       break;
