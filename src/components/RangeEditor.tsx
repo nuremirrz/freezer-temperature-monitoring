@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Pencil, Check, X } from "lucide-react";
 import { api, UnitDetail, formatRange, ApiError } from "@/lib/api";
 import { useLiveStore } from "@/store/useLiveStore";
+import { useMe } from "./SessionProvider";
+import { canEditRange } from "@/lib/auth/permissions";
 
 /**
  * The normal range, editable in place.
@@ -13,12 +15,23 @@ import { useLiveStore } from "@/store/useLiveStore";
  * status server-side, so the panel reloads from the API rather than patching state here.
  */
 export default function RangeEditor({ unit, locationId }: { unit: UnitDetail; locationId: string }) {
+  const me = useMe();
   const loadLocation = useLiveStore((s) => s.loadLocation);
   const [editing, setEditing] = useState(false);
   const [min, setMin] = useState(String(unit.rangeMinF));
   const [max, setMax] = useState(String(unit.rangeMaxF));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A technician reads the range and never sets it — the same rule the server applies, drawn
+  // rather than refused. No pencil, so nothing to click and be told "no" about.
+  if (!canEditRange(me)) {
+    return (
+      <div className="mt-1.5 text-base font-semibold whitespace-nowrap tabular-nums @xs:text-lg @md:text-xl">
+        {formatRange(unit)}
+      </div>
+    );
+  }
 
   const open = () => {
     setMin(String(unit.rangeMinF));

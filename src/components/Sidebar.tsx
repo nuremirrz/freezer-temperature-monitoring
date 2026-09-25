@@ -3,17 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { MapPin, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
+import { MapPin, Users, LayoutGrid, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
 import { authApi } from "@/lib/auth-client";
+import { canManageTeam, canManageDistricts } from "@/lib/auth/permissions";
+import { useMe } from "./SessionProvider";
 import QimbyMark from "./QimbyMark";
 
 /**
- * The BK6816 release ships the map only; everything else is visible but inert so the
- * shape of the product still reads, per the ТЗ ("остальные иконки убрать или сделать
- * неактивными"). Log Out stays.
+ * Locations for everyone; Team and Districts for those who run them. The rest is visible but
+ * inert so the shape of the product still reads, per the BK6816 ТЗ ("остальные иконки убрать
+ * или сделать неактивными"). Log Out stays.
  */
-const NAV = [{ href: "/locations", title: "Locations", icon: MapPin }] as const;
-
 const COMING_SOON = [
   { title: "Maintenance Compliance", icon: ClipboardCheck },
   { title: "Settings", icon: Settings },
@@ -22,9 +22,17 @@ const COMING_SOON = [
 ] as const;
 
 export default function Sidebar() {
+  const me = useMe();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Drawn by the same rules the server enforces: a link that would only lead to a 403 is not a link.
+  const NAV = [
+    { href: "/locations", title: "Locations", icon: MapPin },
+    ...(canManageTeam(me) ? [{ href: "/team", title: "Team", icon: Users }] : []),
+    ...(canManageDistricts(me) ? [{ href: "/districts", title: "Districts", icon: LayoutGrid }] : []),
+  ];
 
   const handleLogout = async () => {
     await authApi.logout();

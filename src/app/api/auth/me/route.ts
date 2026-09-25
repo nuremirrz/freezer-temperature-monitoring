@@ -7,13 +7,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const session = await getSession();
   if (!session) return unauthorized();
-  const { id, email, name, role, emailVerifiedAt, createdAt } = session.user;
+  const { id, email, name, role, organizationId, status, emailVerifiedAt, createdAt } = session.user;
   return json({
     user: {
       id,
       email,
       name,
       role,
+      organizationId,
+      status,
       emailVerifiedAt: emailVerifiedAt?.toISOString() ?? null,
       createdAt: createdAt.toISOString(),
     },

@@ -7,6 +7,7 @@ import { shortAddress } from "@/lib/api";
 import { StatusIcon } from "./StatusIcon";
 import QimbyMark from "./QimbyMark";
 import { useLiveStore, sortLocations, SortMode } from "@/store/useLiveStore";
+import { useMe } from "./SessionProvider";
 
 const SORT_LABEL: Record<SortMode, string> = {
   alerts: "Alerts first",
@@ -83,6 +84,7 @@ export default function LocationsList({
   selectedId?: string;
   className?: string;
 }) {
+  const me = useMe();
   const sortMode = useLiveStore((s) => s.sortMode);
   const locations = useLiveStore((s) => s.locations);
   const summary = useLiveStore((s) => s.summary);
@@ -139,7 +141,10 @@ export default function LocationsList({
 
         {listLoaded && !listError && rows.length === 0 && (
           <div className="p-5 text-sm text-muted">
-            No locations yet. Run the seed script to add them.
+            {me.role === "admin"
+              ? "No locations yet. Run the setup script to add them."
+              : // The spec's empty state: an account that exists but has been handed nothing yet.
+                "You have no locations assigned yet. Ask the owner of your organization."}
           </div>
         )}
 

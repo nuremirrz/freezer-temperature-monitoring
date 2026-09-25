@@ -12,6 +12,15 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "-p", "3200"],
       "port": 3200
+    },
+    {
+      "name": "dev-local",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DATABASE_URL=postgres://postgres:dev@127.0.0.1:55432/qimby",
+        "npm", "run", "dev", "--", "-p", "3200"
+      ],
+      "port": 3200
     }
   ]
 }

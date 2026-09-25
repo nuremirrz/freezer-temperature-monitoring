@@ -4,8 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, LogOut, Trash2 } from "lucide-react";
 import { authApi } from "@/lib/auth-client";
+import { useMe } from "@/components/SessionProvider";
 
 export default function AccountActions() {
+  const me = useMe();
+  // Only Qimby's own team may delete their account; for everyone else the owner deactivates.
+  const canDelete = me.role === "admin";
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -48,6 +52,17 @@ export default function AccountActions() {
         </button>
       </section>
 
+      {!canDelete && (
+        <section className="mt-4 rounded-xl border border-line bg-panel p-5">
+          <h2 className="text-sm font-semibold">Leaving</h2>
+          <p className="mt-1 text-sm text-muted">
+            Accounts here are not deleted, so that your name stays on the work you recorded. Ask
+            the owner of your organization to deactivate your account.
+          </p>
+        </section>
+      )}
+
+      {canDelete && (
       <section className="mt-4 rounded-xl border border-alert/30 bg-panel p-5">
         <h2 className="text-sm font-semibold text-alert">Delete account</h2>
         <p className="mt-1 text-sm text-muted">
@@ -61,6 +76,7 @@ export default function AccountActions() {
           <Trash2 size={15} /> Delete my account
         </button>
       </section>
+      )}
 
       {confirmOpen && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-ink/40 p-4">

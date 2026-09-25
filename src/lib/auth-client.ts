@@ -10,7 +10,7 @@ export interface ApiError {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: ApiError };
 
-async function call<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
+export async function call<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
   try {
     const res = await fetch(path, {
       ...init,
