@@ -93,7 +93,7 @@ function toMember(u: MemberRow, now = Date.now()): Member {
  * Which organization an actor acts on. Everyone but an admin is inside exactly one; an admin
  * stands outside all of them and has to say which.
  */
-function organizationFor(actor: SessionUser, explicit?: string): AuthResult<string> {
+export function organizationFor(actor: SessionUser, explicit?: string): AuthResult<string> {
   if (actor.role === "admin") {
     return explicit
       ? { ok: true, data: explicit }

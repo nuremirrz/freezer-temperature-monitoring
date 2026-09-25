@@ -51,6 +51,21 @@ export const inviteSchema = z.object({
   organizationId: z.string().min(1).max(64).optional(),
 });
 
+const districtName = z.string().trim().min(1, "Give the district a name").max(80, "Name is too long");
+
+export const districtCreateSchema = z.object({
+  name: districtName,
+  organizationId: z.string().min(1).max(64).optional(),
+});
+
+export const districtPatchSchema = z
+  .object({
+    name: districtName.optional(),
+    /** The full set of locations that belong here; any not listed are moved out. */
+    locationIds: idList.optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "Nothing to change" });
+
 export const memberPatchSchema = z
   .object({
     name: z.string().trim().max(80, "Name is too long").optional(),
