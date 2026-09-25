@@ -27,7 +27,8 @@
     "mail:test": "tsx scripts/mail-test.mts",
     "db:backup": "tsx scripts/db-backup.mts",
     "db:restore": "tsx scripts/db-restore.mts",
-    "sensors:intervals": "tsx scripts/sensor-intervals.mts"
+    "sensors:intervals": "tsx scripts/sensor-intervals.mts",
+    "org:setup": "tsx scripts/setup-organization.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
