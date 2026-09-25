@@ -26,6 +26,38 @@ export function verifyEmailMail(to: string, link: string): Mail {
   };
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  owner: "an owner",
+  district_manager: "a district manager",
+  technician: "a technician",
+  admin: "an administrator",
+};
+
+/**
+ * The invitation. It names who sent it and which organization it is for, because the
+ * recipient may never have heard of Qimby — a technician gets this from their district
+ * manager, not from us — and a bare "set your password" from an unknown sender is what
+ * phishing looks like.
+ */
+export function inviteMail(
+  to: string,
+  link: string,
+  ctx: { organization: string; invitedBy: string; role: string; ttlHours: number },
+): Mail {
+  const role = ROLE_LABEL[ctx.role] ?? ctx.role;
+  const who = `${ctx.invitedBy} has invited you to join ${ctx.organization} on Qimby as ${role}.`;
+  return {
+    to,
+    subject: `${ctx.invitedBy} invited you to Qimby`,
+    text: `${who}\n\nChoose a password to activate your account:\n\n${link}\n\nThe link is valid for ${ctx.ttlHours} hours and works once. If you weren't expecting this, ignore it — nothing happens until you set a password.`,
+    html: layout(
+      `You're invited to ${ctx.organization}`,
+      `${who} Choose a password to activate your account. The link is valid for ${ctx.ttlHours} hours and works once. If you weren't expecting this, ignore it — nothing happens until you set a password.`,
+      { href: link, label: "Set my password" },
+    ),
+  };
+}
+
 export function resetPasswordMail(to: string, link: string): Mail {
   return {
     to,

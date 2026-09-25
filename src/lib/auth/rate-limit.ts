@@ -26,4 +26,6 @@ export const LIMITS = {
   forgot: { limit: 5, windowMs: 10 * 60_000 },
   resend: { limit: 3, windowMs: 10 * 60_000 },
   reset: { limit: 10, windowMs: 10 * 60_000 },
+  /** Invitations send mail; a runaway loop must not turn an owner's account into a spam source. */
+  invite: { limit: 20, windowMs: 10 * 60_000 },
 } as const;

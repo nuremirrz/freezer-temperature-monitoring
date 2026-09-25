@@ -9,6 +9,7 @@ import {
   canFileReport,
   wouldOrphanOrganization,
   scopeSurvivesRoleChange,
+  withinReach,
   type Actor,
 } from "./permissions";
 
@@ -113,6 +114,25 @@ describe("the last owner", () => {
   /** A count of zero means the data is already wrong; the guard must still refuse. */
   it("refuses even when the count says nobody is left", () => {
     expect(wouldOrphanOrganization(activeOwner, 0)).toBe(true);
+  });
+});
+
+describe("handing out only what one can reach", () => {
+  it("lets an owner hand out anything", () => {
+    expect(withinReach(["loc_a", "loc_b"], "all")).toBe(true);
+  });
+
+  it("lets a manager hand out locations they see", () => {
+    expect(withinReach(["loc_a"], ["loc_a", "loc_b"])).toBe(true);
+  });
+
+  /** The case that matters: a manager reaching past their own districts by inviting. */
+  it("stops a manager handing out a location they cannot see", () => {
+    expect(withinReach(["loc_a", "loc_z"], ["loc_a", "loc_b"])).toBe(false);
+  });
+
+  it("treats an empty request as harmless", () => {
+    expect(withinReach([], [])).toBe(true);
   });
 });
 

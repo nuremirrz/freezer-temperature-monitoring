@@ -18,7 +18,7 @@ import { randomBytes } from "node:crypto";
  * --invite is the way to hand an account to someone else. It creates the account with no
  * usable password and prints a single-use link that lets them choose their own, so the
  * password is never typed by whoever sets the account up, never travels through a chat, and
- * is not known to anyone but its owner. The link is good for seven days.
+ * is not known to anyone but its owner. The link is good for 72 hours.
  *
  * The password never appears on the command line — it comes from ACCOUNT_PASSWORD, so it
  * stays out of the shell history, and it is hashed before it reaches the database.
@@ -45,7 +45,8 @@ const revoke = all("revoke");
 const listOnly = argv.includes("--list");
 const deleteAccount = argv.includes("--delete");
 const invite = argv.includes("--invite");
-const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
+// 72 hours, per the roles spec. Long enough to be read on a Friday and used on Monday.
+const INVITE_TTL_MS = 72 * 60 * 60_000;
 const password = process.env.ACCOUNT_PASSWORD;
 
 if (!email) {
@@ -159,7 +160,7 @@ if (invite) {
     data: { id: hash, userId: user.id, type: "password_reset", expiresAt: new Date(Date.now() + INVITE_TTL_MS) },
   });
   const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
-  console.log(`\n  Single-use link, valid 7 days — send it to ${email} and let them set their own password:`);
+  console.log(`\n  Single-use link, valid 72 hours — send it to ${email} and let them set their own password:`);
   console.log(`  ${base}/reset-password?token=${raw}`);
 }
 

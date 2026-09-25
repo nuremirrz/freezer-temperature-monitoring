@@ -20,7 +20,7 @@ export type AuthFailure = { ok: false; code: string; message: string; status: nu
 export type AuthOk<T = undefined> = { ok: true; data: T };
 export type AuthResult<T = undefined> = AuthOk<T> | AuthFailure;
 
-const fail = (code: string, message: string, status: number): AuthFailure => ({ ok: false, code, message, status });
+export const fail = (code: string, message: string, status: number): AuthFailure => ({ ok: false, code, message, status });
 
 /** In development without SMTP the link is returned to the caller so the flow can be completed locally. */
 function devLink(link: string): string | undefined {

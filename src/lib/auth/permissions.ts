@@ -95,6 +95,17 @@ export function scopeSurvivesRoleChange(from: UserRole, to: UserRole): boolean {
   return from === to;
 }
 
+/**
+ * Whether every id someone wants to hand out is one they can reach themselves.
+ *
+ * A manager granting a technician a location must already see that location; otherwise
+ * inviting would be a way to reach past one's own districts. "all" is an owner's or admin's
+ * reach and satisfies anything. An empty request is within anyone's reach — it grants nothing.
+ */
+export function withinReach(requested: readonly string[], reach: "all" | readonly string[]): boolean {
+  return reach === "all" || requested.every((id) => reach.includes(id));
+}
+
 function unhandled(role: never): never {
   throw new Error(`No permissions defined for role ${String(role)}`);
 }
