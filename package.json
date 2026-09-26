@@ -29,7 +29,8 @@
     "db:restore": "tsx scripts/db-restore.mts",
     "sensors:intervals": "tsx scripts/sensor-intervals.mts",
     "org:setup": "tsx scripts/setup-organization.mts",
-    "test:integration": "tsx scripts/integration-team.mts"
+    "test:integration": "tsx scripts/integration-team.mts",
+    "recover:ttn": "tsx scripts/recover-from-ttn.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
