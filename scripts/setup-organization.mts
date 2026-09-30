@@ -14,13 +14,16 @@ import { INVITE_TTL_MS } from "../src/lib/auth/team";
  *   npm run org:setup -- --name "Burger King — Steven" --attach "Burger King #6816" --attach "Burger King #6399"
  *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com --resend
  *   npm run org:setup -- --name "Burger King — Steven" --owner owner@qimby.test --print-link
+ *   npm run org:setup -- --name "Burger King — Steven" --attach-user tech@example.com
  *
  * The flow agreed with the client on 30 Sep 2026: we create the organization and send the owner
  * one e-mail; the owner signs in through that link and adds their own people and restaurants.
  * So this creates an **empty** organization and attaches nothing it was not told to. An earlier
  * version pulled in every restaurant and account that had no organization, which was right when
  * there was one customer and is a way to hand one customer's restaurants to another now that
- * there are two. `--attach` names a restaurant explicitly, for the estate that predates this.
+ * there are two. `--attach` names a restaurant explicitly, and `--attach-user` an account, for
+ * the estate and the people that predate this. An account keeps its role and its grants; it only
+ * gains an organization, so the owner sees it on the Team page and can manage it there.
  *
  * The invitation is the same single-use, 72-hour link the Team page sends: the owner chooses a
  * password through it and that confirms the address. It goes out through whatever mailer the
@@ -40,6 +43,7 @@ const all = (n: string) => argv.reduce<string[]>((acc, a, i) => (a === `--${n}` 
 const name = flag("name");
 const ownerEmail = flag("owner")?.toLowerCase();
 const attach = all("attach");
+const attachUsers = all("attach-user").map((e) => e.toLowerCase());
 const resend = argv.includes("--resend");
 const printLink = argv.includes("--print-link");
 const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
@@ -74,6 +78,28 @@ for (const locName of attach) {
   } else {
     await prisma.location.update({ where: { id: loc.id }, data: { organizationId: org.id } });
     console.log(`  + ${locName} привязан`);
+  }
+}
+
+// ---- 2b. accounts named on the command line, and only those ----
+for (const email of attachUsers) {
+  const u = await prisma.user.findUnique({ where: { email }, select: { id: true, role: true, organizationId: true } });
+  if (!u) {
+    console.error(`  ✗ аккаунта ${email} нет — пригласи его с экрана Team, когда владелец войдёт`);
+    process.exit(1);
+  }
+  if (u.role === "admin") {
+    console.error(`  ✗ ${email} — admin, команда Qimby стоит вне организаций`);
+    process.exit(1);
+  }
+  if (u.organizationId === org.id) {
+    console.log(`  = ${email} уже здесь`);
+  } else if (u.organizationId) {
+    console.error(`  ✗ ${email} состоит в другой организации — сначала реши, чей он`);
+    process.exit(1);
+  } else {
+    await prisma.user.update({ where: { id: u.id }, data: { organizationId: org.id } });
+    console.log(`  + ${email} (${u.role}) введён в организацию`);
   }
 }
 
@@ -139,5 +165,7 @@ console.log(`\nРестораны: ${locs.length ? "" : "пока нет — в�
 for (const l of locs) console.log(`  ${l.name}${l.deactivatedAt ? "  (закрыт)" : ""}`);
 const orphans = await prisma.location.count({ where: { organizationId: null } });
 if (orphans) console.log(`\nБез организации остаётся ресторанов: ${orphans} — --attach "имя", если они этого клиента`);
+const loose = await prisma.user.findMany({ where: { organizationId: null, role: { not: "admin" } }, select: { email: true, role: true } });
+if (loose.length) console.log(`Без организации остаются аккаунты: ${loose.map((u) => `${u.email} (${u.role})`).join(", ")} — --attach-user e-mail, если они этого клиента`);
 
 await prisma.$disconnect();
