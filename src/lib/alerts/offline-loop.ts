@@ -1,4 +1,5 @@
 import { runOfflineCheck } from "./service";
+import { watchReadingFreshness } from "./freshness";
 
 const INTERVAL_MS = 60_000;
 const g = globalThis as unknown as { __qimbyOfflineLoop?: NodeJS.Timeout };
@@ -19,6 +20,11 @@ export function startOfflineCheckLoop(): void {
       }
     } catch (err) {
       console.error("[offline-check] failed:", err instanceof Error ? err.message : err);
+    }
+    try {
+      await watchReadingFreshness();
+    } catch (err) {
+      console.error("[readings-watch] failed:", err instanceof Error ? err.message : err);
     }
   };
 

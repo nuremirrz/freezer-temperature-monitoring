@@ -34,6 +34,10 @@ jobs:
           echo "$json"
           [ "$code" = "200" ] || { echo "::error::health check returned $code"; exit 1; }
           echo "$json" | grep -q '"db":"ok"' || { echo "::error::database unreachable"; exit 1; }
+          if echo "$json" | grep -q '"readings":"stalled"'; then
+            echo "::error::sensors are heard but no reading has been written for over 20 minutes — run npm run db:sequences"
+            exit 1
+          fi
           if echo "$json" | grep -q '"status":"degraded"'; then
             echo "::warning::no uplink from any sensor for over 20 minutes"
           fi

@@ -8,6 +8,7 @@ import {
   offlineAfterSec,
   canNotify,
   fullyOfflineLocations,
+  readingFreshness,
 } from "./rules";
 
 const FREEZER = { rangeMinF: -10, rangeMaxF: 10 };
@@ -196,5 +197,33 @@ describe("notification cooldown", () => {
     expect(canNotify(null, now)).toBe(true);
     expect(canNotify(new Date(now.getTime() - 10 * 60_000), now)).toBe(false);
     expect(canNotify(new Date(now.getTime() - 30 * 60_000), now)).toBe(true);
+  });
+});
+
+describe("reading freshness — sensors heard, readings written?", () => {
+  const now = new Date("2026-09-30T19:00:00Z");
+  const ago = (min: number) => new Date(now.getTime() - min * 60_000);
+
+  it("is fine while both are recent", () => {
+    expect(readingFreshness(ago(2), ago(3), now)).toEqual({ stalled: false, minutesSinceUplink: 2, minutesSinceReading: 3 });
+  });
+
+  it("is stalled when sensors were heard minutes ago but nothing was written for hours", () => {
+    // The 29 Sep 2026 signature: lastSeenAt fresh, last reading a day old.
+    expect(readingFreshness(ago(1), ago(24 * 60), now).stalled).toBe(true);
+  });
+
+  it("is stalled when sensors are heard and nothing was ever written", () => {
+    expect(readingFreshness(ago(5), null, now)).toEqual({ stalled: true, minutesSinceUplink: 5, minutesSinceReading: null });
+  });
+
+  it("is not stalled when the sensors themselves are silent — that is an outage, not a write failure", () => {
+    expect(readingFreshness(ago(90), ago(90), now).stalled).toBe(false);
+    expect(readingFreshness(null, null, now).stalled).toBe(false);
+  });
+
+  it("gives a fresh restart the same grace as the offline rule", () => {
+    expect(readingFreshness(ago(1), ago(20), now).stalled).toBe(false);
+    expect(readingFreshness(ago(1), ago(21), now).stalled).toBe(true);
   });
 });

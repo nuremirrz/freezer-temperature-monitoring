@@ -165,3 +165,36 @@ export function fullyOfflineLocations(sensors: OfflineSensorState[]): Set<string
   }
   return out;
 }
+
+/** Sensors heard, readings not written: after this long it is our fault, not a restaurant's. */
+export const READINGS_STALLED_AFTER_MIN = 20;
+
+export interface ReadingFreshness {
+  /** Sensors have been heard recently but nothing has been written for too long. */
+  stalled: boolean;
+  minutesSinceUplink: number | null;
+  minutesSinceReading: number | null;
+}
+
+/**
+ * Whether the write path is dead while the sensors are alive.
+ *
+ * "Heard" and "recorded" are two different facts: an uplink marks the sensor as seen before
+ * its reading is stored, so a broken insert leaves the first fresh and the second stale. On
+ * 29 Sep 2026 that hid two days of lost readings behind a healthy-looking /api/health. This
+ * compares the two: sensors heard within the window and no reading within it means stalled.
+ * No sensors heard at all is a different problem (offline), and not this one.
+ */
+export function readingFreshness(
+  lastUplinkAt: Date | null,
+  lastReadingAt: Date | null,
+  now: Date,
+  afterMin: number = READINGS_STALLED_AFTER_MIN,
+): ReadingFreshness {
+  const minutes = (d: Date | null) => (d ? Math.max(0, Math.round((now.getTime() - d.getTime()) / 60_000)) : null);
+  const minutesSinceUplink = minutes(lastUplinkAt);
+  const minutesSinceReading = minutes(lastReadingAt);
+  const sensorsAlive = minutesSinceUplink !== null && minutesSinceUplink <= afterMin;
+  const readingsFresh = minutesSinceReading !== null && minutesSinceReading <= afterMin;
+  return { stalled: sensorsAlive && !readingsFresh, minutesSinceUplink, minutesSinceReading };
+}
