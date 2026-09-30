@@ -13,6 +13,7 @@ import { INVITE_TTL_MS } from "../src/lib/auth/team";
  *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com
  *   npm run org:setup -- --name "Burger King — Steven" --attach "Burger King #6816" --attach "Burger King #6399"
  *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com --resend
+ *   npm run org:setup -- --name "Burger King — Steven" --owner owner@qimby.test --print-link
  *
  * The flow agreed with the client on 30 Sep 2026: we create the organization and send the owner
  * one e-mail; the owner signs in through that link and adds their own people and restaurants.
@@ -23,7 +24,9 @@ import { INVITE_TTL_MS } from "../src/lib/auth/team";
  *
  * The invitation is the same single-use, 72-hour link the Team page sends: the owner chooses a
  * password through it and that confirms the address. It goes out through whatever mailer the
- * environment has (Brevo in production); without one, the link is printed here to be passed on.
+ * environment has (Brevo in production); without one, or with --print-link, the link is printed
+ * here to be passed on — which is also how a placeholder owner on an address nobody reads gets
+ * in, until the real one is invited from the Team page and the placeholder deactivated.
  *
  * Idempotent: the organization is found by name, a restaurant already inside is left alone, and
  * an owner already invited is invited again only with --resend. An owner who is already active
@@ -38,6 +41,7 @@ const name = flag("name");
 const ownerEmail = flag("owner")?.toLowerCase();
 const attach = all("attach");
 const resend = argv.includes("--resend");
+const printLink = argv.includes("--print-link");
 const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
 
 if (!name) {
@@ -114,8 +118,8 @@ if (ownerEmail) {
     await prisma.authToken.create({ data: { id: hash, userId: user.id, type: "password_reset", expiresAt: new Date(Date.now() + INVITE_TTL_MS) } });
     const link = `${base}/reset-password?token=${raw}`;
     const mode = mailerMode();
-    if (mode === "console") {
-      console.log(`  почта не настроена — передай ссылку сам, она одноразовая и живёт 72 часа:\n  ${link}`);
+    if (mode === "console" || printLink) {
+      console.log(`  ${printLink ? "по просьбе" : "почта не настроена"} — передай ссылку сам, она одноразовая и живёт 72 часа:\n  ${link}`);
     } else {
       const ok = await sendMail(inviteMail(ownerEmail, link, { organization: org.name, invitedBy: "Qimby", role: "owner", ttlHours: INVITE_TTL_MS / 3_600_000 }));
       console.log(ok ? `  письмо ушло через ${mode}` : `  ✗ письмо не ушло — вот ссылка, передай сам:\n  ${link}`);
