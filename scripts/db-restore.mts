@@ -153,4 +153,14 @@ console.log(`\n✓ Восстановлено строк: ${written} из ${expe
 if (missing.length) {
   console.log(`Копия старее текущей схемы, пустыми остались: ${missing.join(", ")}`);
 }
+
+// The rows came back with the ids they had; the counter that numbers new rows did not follow.
+// Left at 1, it hands out numbers that are free until they are not, and then every insert
+// collides with a restored row — silently, because the ingest asks to skip duplicates. That is
+// how two days of readings were lost after the 26 Sep 2026 move. Move each counter past its rows.
+for (const table of ["Reading", "UnknownUplink"]) {
+  const [{ max }] = await db.$queryRawUnsafe<{ max: number | null }[]>(`SELECT max(id)::int AS max FROM "${table}"`);
+  if (max) await db.$executeRawUnsafe(`SELECT setval('"${table}_id_seq"', ${max}, true)`);
+  console.log(`  счётчик ${table} → ${max ?? 0}`);
+}
 await db.$disconnect();
