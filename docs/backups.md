@@ -1,9 +1,9 @@
 # Backups
 
-A second copy of the database, taken every night and kept off Neon.
+A second copy of the database, taken every night and kept away from the database host.
 
-Neon's free tier keeps only a few hours of history, so it cannot undo a mistake noticed the next
-morning — and on 13 Sep a script pointed at production proved that is not hypothetical. This is
+A free-tier database keeps little or no history of its own, so it cannot undo a mistake noticed the
+next morning — and on 13 Sep a script pointed at production proved that is not hypothetical. This is
 the copy that answers that.
 
 ## What a backup is
@@ -92,7 +92,7 @@ It prints a line like `Public key: age1abc…`. Then, in the repository settings
 
 | Where | Name | Value |
 |---|---|---|
-| Settings → Secrets and variables → Actions → **Secrets** | `DATABASE_URL` | the production Neon URL |
+| Settings → Secrets and variables → Actions → **Secrets** | `DATABASE_URL` | the production database URL (Supabase, session pooler) |
 | Settings → Secrets and variables → Actions → **Variables** | `BACKUP_AGE_RECIPIENT` | the `age1…` public key |
 
 Then run it once by hand: Actions → *Daily database backup* → **Run workflow**.

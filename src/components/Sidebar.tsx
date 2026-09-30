@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MapPin, Users, LayoutGrid, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
 import { authApi } from "@/lib/auth-client";
-import { canManageTeam, canManageDistricts } from "@/lib/auth/permissions";
+import { canManageTeam, canManageLocations } from "@/lib/auth/permissions";
 import { useMe } from "./SessionProvider";
 import QimbyMark from "./QimbyMark";
 
@@ -31,7 +31,7 @@ export default function Sidebar() {
   const NAV = [
     { href: "/locations", title: "Locations", icon: MapPin },
     ...(canManageTeam(me) ? [{ href: "/team", title: "Team", icon: Users }] : []),
-    ...(canManageDistricts(me) ? [{ href: "/districts", title: "Districts", icon: LayoutGrid }] : []),
+    ...(canManageLocations(me) ? [{ href: "/organization", title: "Restaurants & people", icon: LayoutGrid }] : []),
   ];
 
   const handleLogout = async () => {

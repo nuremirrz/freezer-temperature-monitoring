@@ -4,6 +4,7 @@ import {
   canInvite,
   canManageTeam,
   canManageDistricts,
+  canManageLocations,
   canEditRange,
   canEditPassport,
   canFileReport,
@@ -144,5 +145,14 @@ describe("changing a role", () => {
 
   it("keeps the scope when the role is unchanged", () => {
     expect(scopeSurvivesRoleChange("technician", "technician")).toBe(true);
+  });
+});
+
+describe("who may add and edit restaurants", () => {
+  it("is the owner's and Qimby's job, nobody else's", () => {
+    expect(canManageLocations(owner)).toBe(true);
+    expect(canManageLocations(admin)).toBe(true);
+    expect(canManageLocations(manager)).toBe(false);
+    expect(canManageLocations(technician)).toBe(false);
   });
 });

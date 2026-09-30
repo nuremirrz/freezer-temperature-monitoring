@@ -18,7 +18,7 @@ export type VisibleLocations = "all" | string[];
  *
  * - everything:    Qimby's own team, who stand above the organizations.
  * - organization:  an owner — every location of theirs, in a district or not.
- * - districts:     a manager — the locations of the districts they were given.
+ * - districts:     a manager — the locations of their districts, plus any granted directly.
  * - locations:     a technician — the locations they were granted, one by one.
  * - nothing:       an owner or a manager of no organization. There is nothing to own.
  */

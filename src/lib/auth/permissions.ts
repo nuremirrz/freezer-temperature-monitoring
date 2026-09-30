@@ -55,6 +55,15 @@ export function canManageDistricts(actor: Actor): boolean {
   return actor.role === "owner" || actor.role === "admin";
 }
 
+/**
+ * Add a restaurant and edit its name, address and district. The owner's job, agreed with the
+ * client on 30 Sep 2026: they bring the list of restaurants, Qimby brings the equipment and the
+ * sensors at installation. So this covers the restaurant itself and nothing inside it.
+ */
+export function canManageLocations(actor: Actor): boolean {
+  return actor.role === "owner" || actor.role === "admin";
+}
+
 /** Set a unit's normal and alert ranges. */
 export function canEditRange(actor: Actor): boolean {
   return actor.role !== "technician";

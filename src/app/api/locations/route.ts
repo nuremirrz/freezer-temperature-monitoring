@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
-import { unauthorized } from "@/lib/auth/http";
+import { json, unauthorized, parseBody } from "@/lib/auth/http";
 import { visibleLocationIds, locationWhere } from "@/lib/auth/access";
+import { locationCreateSchema } from "@/lib/auth/validation";
+import { createLocation } from "@/lib/auth/locations";
 import { deriveUnitStatus, deriveLocationStatus, countStatuses, UnitStatus } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +16,9 @@ export async function GET() {
   const visible = await visibleLocationIds(session);
   const [locations, latest] = await Promise.all([
     prisma.location.findMany({
-      where: locationWhere(visible),
+      // Staff reach "all", which must still leave out closed restaurants; everyone else's ids
+      // already do, and the extra clause costs nothing.
+      where: { ...locationWhere(visible), deactivatedAt: null },
       orderBy: { name: "asc" },
       include: {
         units: {
@@ -52,4 +56,15 @@ export async function GET() {
   });
 
   return NextResponse.json({ locations: payload, summary: countStatuses(overall) });
+}
+
+/** POST /api/locations — a new restaurant, placed on the map from its street address. */
+export async function POST(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return unauthorized();
+  const parsed = await parseBody(req, locationCreateSchema);
+  if (!parsed.ok) return parsed.response;
+  const r = await createLocation(session, parsed.data);
+  if (!r.ok) return json({ error: r.code, message: r.message }, r.status);
+  return json(r.data, 201);
 }

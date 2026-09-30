@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
-import { unauthorized } from "@/lib/auth/http";
+import { json, unauthorized, parseBody } from "@/lib/auth/http";
 import { visibleLocationIds, canSee } from "@/lib/auth/access";
+import { locationPatchSchema } from "@/lib/auth/validation";
+import { updateLocation } from "@/lib/auth/locations";
 import { deriveUnitStatus, deriveLocationStatus } from "@/lib/status";
 import { trendOf, TREND_WINDOW } from "@/lib/trend";
 
@@ -153,4 +155,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     })),
     units,
   });
+}
+
+/**
+ * PATCH /api/locations/[id] — rename or re-address the restaurant, open or close it, or set
+ * who is assigned to it. The owner's job; a closed restaurant is reachable here and nowhere else.
+ */
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) return unauthorized();
+  const parsed = await parseBody(req, locationPatchSchema);
+  if (!parsed.ok) return parsed.response;
+  const { id } = await ctx.params;
+  const r = await updateLocation(session, id, parsed.data);
+  if (!r.ok) return json({ error: r.code, message: r.message }, r.status);
+  return json(r.data);
 }

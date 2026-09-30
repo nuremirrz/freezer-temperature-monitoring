@@ -178,6 +178,10 @@ model Location {
   organizationId String?
   /// Null means "no district": visible to the owners, to no manager.
   districtId     String?
+  /// A restaurant that closed, or was never really ours. Never deleted: its readings and alerts
+  /// are history worth keeping. While set, it is off every list, map and counter, and raises no
+  /// alerts — but an uplink from a sensor still there is stored, so reactivating loses nothing.
+  deactivatedAt  DateTime? @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
 
   organization Organization?    @relation(fields: [organizationId], references: [id])

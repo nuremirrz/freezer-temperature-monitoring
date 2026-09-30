@@ -159,7 +159,11 @@ export default function LocationsList({
             <StatusIcon status={loc.status} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{loc.name}</div>
-              <div className="truncate text-xs text-muted">{shortAddress(loc)}</div>
+              <div className="truncate text-xs text-muted">
+                {shortAddress(loc)}
+                {/* Just added by the owner: nothing installed, so "normal" is only the absence of news */}
+                {loc.unitsTotal === 0 && <span className="text-faint"> · no equipment yet</span>}
+              </div>
             </div>
             <ChevronRight size={16} className="shrink-0 text-faint" />
           </Link>

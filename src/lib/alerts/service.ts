@@ -98,6 +98,8 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
     include: { location: true },
   });
   if (!unit) return;
+  // A deactivated restaurant keeps its readings and raises nothing: nobody is there to act.
+  if (unit.location.deactivatedAt) return;
 
   const openAlert = await prisma.alert.findFirst({
     where: { unitId: unit.id, type: "temp_out_of_range", resolvedAt: null },
@@ -317,6 +319,8 @@ export interface OfflineCheckResult {
  */
 export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCheckResult> {
   const sensors = await prisma.sensor.findMany({
+    // A deactivated restaurant's sensors are expected to fall silent; that is not an outage.
+    where: { location: { deactivatedAt: null } },
     include: {
       location: true,
       channels: { where: { unitId: { not: null } }, include: { unit: true } },

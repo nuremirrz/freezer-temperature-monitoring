@@ -10,6 +10,8 @@ import { visibleLocationIds } from "../src/lib/auth/access";
 import type { CurrentSession } from "../src/lib/auth/session";
 import { inviteUser, listTeam, updateMember, deactivateMember, resendInvite, revokeInvite } from "../src/lib/auth/team";
 import { listDistricts, createDistrict, updateDistrict, deleteDistrict } from "../src/lib/auth/districts";
+import { listOrganization, createLocation, updateLocation } from "../src/lib/auth/locations";
+import type { Geocoder } from "../src/lib/geocode";
 
 /**
  * Runs the team and district services end to end against a throwaway database, through every
@@ -39,7 +41,16 @@ const session = (u: { id: string }): Promise<CurrentSession> =>
 const console_log = console.log;
 console.log = (...a: unknown[]) => { if (!String(a[0]).startsWith("[mail]")) console_log(...a); };
 
-// ---- clean slate ----
+// ---- clean slate: the whole database, children before parents ----
+// A throwaway database is the contract, but `prisma dev` serves one store whatever name the
+// URL carries, so the seed's equipment may be here too. Everything goes.
+await prisma.reading.deleteMany();
+await prisma.alert.deleteMany();
+await prisma.sensorChannel.deleteMany();
+await prisma.sensor.deleteMany();
+await prisma.gateway.deleteMany();
+await prisma.unit.deleteMany();
+await prisma.unknownUplink.deleteMany();
 await prisma.userDistrict.deleteMany();
 await prisma.locationAccess.deleteMany();
 await prisma.user.deleteMany();
@@ -155,11 +166,69 @@ check("менеджер после удаления дистрикта види�
 r = await listDistricts(S2.owner);
 check("все 3 локации снова неразмещённые", r.ok && r.data.unassigned.length === 3);
 
+
+console.log("\n=== рестораны: таблица владельца ===");
+// No network in a test: the geocoder is a stub that answers with a point derived from the street.
+const pin: Geocoder = async (a) => (a.address.includes("nowhere") ? null : { lat: 33 + a.address.length, lng: -117, precision: "address" });
+r = await listOrganization(S2.owner);
+check("владелец видит таблицу: 3 ресторана, все открыты", r.ok && r.data.locations.length === 3 && r.data.locations.every((l: any) => l.active), r.ok ? "" : `${r.code}`);
+check("в таблице есть кого назначать: менеджеры и техники организации", r.ok && r.data.managers.length >= 1 && r.data.technicians.length >= 1);
+const NEW = { name: "Loc 4", address: "77 Main St", city: "Norco", state: "CA", zip: "92860" };
+r = await createLocation(S2.owner, NEW, pin);
+check("владелец добавляет ресторан; адрес поставлен на карту, зона по штату", r.ok && r.data.lat === 33 + NEW.address.length && r.data.timezone === "America/Los_Angeles", r.ok ? "" : `${r.code}`);
+const L4 = r.data.id;
+r = await createLocation(S2.owner, NEW, pin);
+check("повтор имени → 409", !r.ok && r.status === 409 && r.code === "location_exists", `${r.code}`);
+r = await createLocation(S.dm, { ...NEW, name: "Loc 5" }, pin);
+check("менеджер не добавляет рестораны → 403", !r.ok && r.status === 403);
+r = await createLocation(S2.owner, { ...NEW, name: "Loc 6", address: "nowhere" }, pin);
+check("адрес не найден → 422, ресторан не создан", !r.ok && r.status === 422 && r.code === "address_not_found", `${r.code}`);
+r = await updateLocation(S2.owner, L4, { name: "Loc 4 renamed" }, pin);
+check("переименование", r.ok && r.data.name === "Loc 4 renamed" && r.data.lat === 33 + NEW.address.length);
+r = await updateLocation(S2.owner, L4, { name: "Loc 1" }, pin);
+check("переименование в занятое имя → 409", !r.ok && r.status === 409);
+r = await updateLocation(S2.owner, L4, { address: "1 Short" }, pin);
+check("смена адреса ставит пин заново", r.ok && r.data.lat === 33 + "1 Short".length);
+
+console.log("\n=== люди на ресторане ===");
+vis = await visibleLocationIds(await session(dm));
+check("менеджер пока не видит ничего", vis !== "all" && vis.length === 0);
+r = await updateLocation(S2.owner, L4, { managerIds: [dm.id], technicianIds: [tech.id] }, pin);
+check("назначены менеджер и техник", r.ok && r.data.managers.length === 1 && r.data.technicians.length === 1, r.ok ? "" : `${r.code}`);
+vis = await visibleLocationIds(await session(dm));
+check("менеджер видит ресторан напрямую, без дистрикта", vis !== "all" && vis.includes(L4));
+vis = await visibleLocationIds(await session(tech));
+check("техник тоже", vis !== "all" && vis.includes(L4));
+r = await updateLocation(S2.owner, L4, { technicianIds: [dm.id] }, pin);
+check("менеджер в колонке техников → 400", !r.ok && r.status === 400 && r.code === "unknown_person", `${r.code}`);
+r = await updateLocation(S2.owner, L4, { managerIds: [] }, pin);
+vis = await visibleLocationIds(await session(dm));
+check("снятый менеджер сразу не видит", r.ok && vis !== "all" && !vis.includes(L4));
+
+console.log("\n=== закрытие ресторана ===");
+const unit = await prisma.unit.create({ data: { locationId: L4, type: "freezer", name: "F", rangeMinF: -10, rangeMaxF: 10 } });
+const alert = await prisma.alert.create({ data: { unitId: unit.id, type: "temp_out_of_range" } });
+r = await updateLocation(S2.owner, L4, { active: false }, pin);
+check("закрыт", r.ok && !r.data.active && r.data.deactivatedAt !== null);
+vis = await visibleLocationIds(await session(tech));
+check("техник закрытый ресторан не видит", vis !== "all" && !vis.includes(L4));
+vis = await visibleLocationIds(S2.owner);
+check("владелец в списках тоже не видит", vis !== "all" && !vis.includes(L4));
+r = await listDistricts(S2.owner);
+check("в дистриктах его нет", r.ok && !r.data.unassigned.some((l: any) => l.id === L4));
+const a = await prisma.alert.findUniqueOrThrow({ where: { id: alert.id } });
+check("открытый алерт закрыт вместе с рестораном", a.resolvedAt !== null);
+r = await listOrganization(S2.owner);
+check("в таблице владельца он остался, последним и закрытым", r.ok && r.data.locations.at(-1).id === L4 && !r.data.locations.at(-1).active);
+r = await updateLocation(S2.owner, L4, { active: true }, pin);
+vis = await visibleLocationIds(await session(tech));
+check("открыт заново — техник снова видит", r.ok && r.data.active && vis !== "all" && vis.includes(L4));
+
 console.log("\n=== admin при единственной организации ===");
 const dev = await prisma.user.findUniqueOrThrow({ where: { email: "dev@t.io" } });
 const S3 = { admin: await session(dev) };
 r = await listDistricts(S3.admin);
-check("admin без явной организации попадает в единственную", r.ok && r.data.unassigned.length === 3, r.ok ? "" : `${r.code}`);
+check("admin без явной организации попадает в единственную", r.ok && r.data.unassigned.length === 4, r.ok ? "" : `${r.code}`); // 3 seeded + the reopened Loc 4
 r = await createDistrict(S3.admin, { name: "By admin" });
 check("admin создаёт дистрикт в единственной организации", r.ok && r.data.name === "By admin");
 r = await inviteUser(S3.admin, { email: "byadmin@t.io", role: "technician", locationIds: [L1.id] }, BASE);
@@ -178,6 +247,13 @@ r = await updateMember(S2.owner, foreign.id, { name: "hacked" });
 check("чужой пользователь → 404, не 403", !r.ok && r.status === 404);
 r = await deactivateMember(S2.owner, foreign.id);
 check("деактивация чужого → 404", !r.ok && r.status === 404);
+const foreignLoc = await prisma.location.create({ data: { name: "Theirs", address: "1", city: "X", state: "NJ", zip: "07601", lat: 0, lng: 0, organizationId: org2.id } });
+r = await updateLocation(S2.owner, foreignLoc.id, { name: "mine now" }, pin);
+check("чужой ресторан → 404", !r.ok && r.status === 404);
+r = await listOrganization(S3.admin);
+check("две организации → admin называет, какую → 400", !r.ok && r.status === 400 && r.code === "organization_required");
+r = await listOrganization(S3.admin, org2.id);
+check("…с явной admin видит её таблицу", r.ok && r.data.locations.length === 1);
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);
 await prisma.$disconnect();

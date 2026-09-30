@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { US_TIMEZONES } from "@/lib/geocode";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -72,5 +73,41 @@ export const memberPatchSchema = z
     role: customerRole.optional(),
     districtIds: idList.optional(),
     locationIds: idList.optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "Nothing to change" });
+
+/** A restaurant as the owner enters it: the street, not the coordinates — those are looked up. */
+const locationFields = {
+  name: z.string().trim().min(1, "Give the restaurant a name").max(80, "Name is too long"),
+  address: z.string().trim().min(1, "Enter the street address").max(120, "Address is too long"),
+  city: z.string().trim().min(1, "Enter the city").max(60, "City is too long"),
+  state: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{2}$/, "State is the two-letter code, e.g. CA"),
+  zip: z.string().trim().regex(/^\d{5}(-\d{4})?$/, "ZIP is five digits"),
+  timezone: z.enum(US_TIMEZONES),
+};
+
+export const locationCreateSchema = z.object({
+  ...locationFields,
+  timezone: locationFields.timezone.optional(),
+  organizationId: z.string().min(1).max(64).optional(),
+});
+
+export const locationPatchSchema = z
+  .object({
+    name: locationFields.name.optional(),
+    address: locationFields.address.optional(),
+    city: locationFields.city.optional(),
+    state: locationFields.state.optional(),
+    zip: locationFields.zip.optional(),
+    timezone: locationFields.timezone.optional(),
+    /** false deactivates, true brings it back; the rest of the row is untouched either way. */
+    active: z.boolean().optional(),
+    /** The full set of managers / technicians assigned here; any not listed are taken off. */
+    managerIds: idList.optional(),
+    technicianIds: idList.optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "Nothing to change" });

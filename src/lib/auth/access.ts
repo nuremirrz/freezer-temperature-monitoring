@@ -23,19 +23,25 @@ export async function visibleLocationIds(session: CurrentSession): Promise<Visib
     case "nothing":
       return [];
 
+    // A deactivated restaurant is off everyone's list, the owner's included: the owner reaches
+    // it through the management screen, which asks separately (see locations.ts).
     case "organization": {
       const rows = await prisma.location.findMany({
-        where: { organizationId: scope.organizationId },
+        where: { organizationId: scope.organizationId, deactivatedAt: null },
         select: { id: true },
       });
       return rows.map((r) => r.id);
     }
 
     case "districts": {
-      // Through the district, so that moving a location between districts moves it out of
-      // one manager's sight and into another's with no row to update on either.
+      // A manager reaches a location two ways: through a district they were given, so that
+      // moving a location between districts moves it between managers with no row to update —
+      // and directly, one restaurant at a time, which is how the owner's table assigns them.
       const rows = await prisma.location.findMany({
-        where: { district: { managers: { some: { userId } } } },
+        where: {
+          deactivatedAt: null,
+          OR: [{ district: { managers: { some: { userId } } } }, { access: { some: { userId } } }],
+        },
         select: { id: true },
       });
       return rows.map((r) => r.id);
@@ -43,7 +49,7 @@ export async function visibleLocationIds(session: CurrentSession): Promise<Visib
 
     case "locations": {
       const rows = await prisma.locationAccess.findMany({
-        where: { userId },
+        where: { userId, location: { deactivatedAt: null } },
         select: { locationId: true },
       });
       return rows.map((r) => r.locationId);

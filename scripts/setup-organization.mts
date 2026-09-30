@@ -1,59 +1,139 @@
 import "./load-env";
+import { randomBytes } from "node:crypto";
 import { prisma } from "../src/lib/db";
+import { hashPassword } from "../src/lib/auth/password";
+import { generateToken } from "../src/lib/auth/tokens";
+import { sendMail, mailerMode } from "../src/lib/auth/mailer";
+import { inviteMail } from "../src/lib/auth/emails";
+import { INVITE_TTL_MS } from "../src/lib/auth/team";
 
 /**
- * Creates the customer's organization and puts the estate inside it.
+ * Brings a customer on board: an organization of theirs, and an invitation to its first owner.
  *
- *   npm run org:setup -- --name "Burger King — Steven"
+ *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com
+ *   npm run org:setup -- --name "Burger King — Steven" --attach "Burger King #6816" --attach "Burger King #6399"
+ *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com --resend
  *
- * Idempotent: the organization is found by name or created, and only what is still outside an
- * organization is moved in. Running it twice changes nothing.
+ * The flow agreed with the client on 30 Sep 2026: we create the organization and send the owner
+ * one e-mail; the owner signs in through that link and adds their own people and restaurants.
+ * So this creates an **empty** organization and attaches nothing it was not told to. An earlier
+ * version pulled in every restaurant and account that had no organization, which was right when
+ * there was one customer and is a way to hand one customer's restaurants to another now that
+ * there are two. `--attach` names a restaurant explicitly, for the estate that predates this.
  *
- * What it does not do is decide who anyone is. Every customer-side account is attached to the
- * organization so that its owner will see them in the Team list, but their roles stay as they
- * are — that is the owner's decision, made on that screen, not a script's guess.
+ * The invitation is the same single-use, 72-hour link the Team page sends: the owner chooses a
+ * password through it and that confirms the address. It goes out through whatever mailer the
+ * environment has (Brevo in production); without one, the link is printed here to be passed on.
+ *
+ * Idempotent: the organization is found by name, a restaurant already inside is left alone, and
+ * an owner already invited is invited again only with --resend. An owner who is already active
+ * needs nothing from here.
  */
 
-const nameFlag = process.argv.indexOf("--name");
-const name = nameFlag > -1 ? process.argv[nameFlag + 1]?.trim() : undefined;
+const argv = process.argv.slice(2);
+const flag = (n: string) => { const i = argv.indexOf(`--${n}`); return i > -1 ? argv[i + 1]?.trim() : undefined; };
+const all = (n: string) => argv.reduce<string[]>((acc, a, i) => (a === `--${n}` && argv[i + 1] ? [...acc, argv[i + 1].trim()] : acc), []);
+
+const name = flag("name");
+const ownerEmail = flag("owner")?.toLowerCase();
+const attach = all("attach");
+const resend = argv.includes("--resend");
+const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
+
 if (!name) {
-  console.error('Нужно имя:  npm run org:setup -- --name "Burger King — Steven"');
+  console.error('Нужно имя:  npm run org:setup -- --name "Burger King — Steven" [--owner e-mail] [--attach "Ресторан"]…');
+  process.exit(1);
+}
+if (ownerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(ownerEmail)) {
+  console.error(`не похоже на e-mail: ${ownerEmail}`);
   process.exit(1);
 }
 
+// ---- 1. the organization, empty unless it already exists ----
 const existing = await prisma.organization.findFirst({ where: { name } });
 const org = existing ?? (await prisma.organization.create({ data: { name } }));
 console.log(`${existing ? "есть" : "создана"}: ${org.name}  (${org.id})`);
 
-// Every location outside an organization belongs to this one. There is one customer today;
-// a second will bring its own locations and its own run of this script with its own name.
-const locations = await prisma.location.updateMany({
-  where: { organizationId: null },
-  data: { organizationId: org.id },
-});
-console.log(`рестораны привязаны: ${locations.count}`);
-
-// Same for accounts — except Qimby's own team, who stand above every organization.
-const users = await prisma.user.updateMany({
-  where: { organizationId: null, role: { not: "admin" } },
-  data: { organizationId: org.id },
-});
-console.log(`аккаунты привязаны: ${users.count}`);
-
-console.log(`\nВ организации сейчас:`);
-const members = await prisma.user.findMany({
-  where: { organizationId: org.id },
-  select: { email: true, role: true, status: true },
-  orderBy: { createdAt: "asc" },
-});
-for (const m of members) console.log(`  ${m.email.padEnd(26)} ${m.role.padEnd(16)} ${m.status}`);
-const owners = members.filter((m) => m.role === "owner" && m.status === "active").length;
-if (!owners) {
-  console.log(`\n  владельца нет — организация ждёт приглашения (npm run access:grant -- --invite --role owner …)`);
+// ---- 2. restaurants named on the command line, and only those ----
+for (const locName of attach) {
+  const loc = await prisma.location.findUnique({ where: { name: locName }, select: { id: true, organizationId: true } });
+  if (!loc) {
+    const known = await prisma.location.findMany({ where: { organizationId: null }, select: { name: true }, orderBy: { name: "asc" } });
+    console.error(`  ✗ ресторана "${locName}" нет. Без организации сейчас: ${known.map((l) => `"${l.name}"`).join(", ") || "(никого)"}`);
+    process.exit(1);
+  }
+  if (loc.organizationId === org.id) {
+    console.log(`  = ${locName} уже здесь`);
+  } else if (loc.organizationId) {
+    console.error(`  ✗ ${locName} принадлежит другой организации — сначала реши, чей он`);
+    process.exit(1);
+  } else {
+    await prisma.location.update({ where: { id: loc.id }, data: { organizationId: org.id } });
+    console.log(`  + ${locName} привязан`);
+  }
 }
 
-const locs = await prisma.location.findMany({ where: { organizationId: org.id }, select: { name: true, districtId: true } });
-console.log(`\nРестораны:`);
-for (const l of locs) console.log(`  ${l.name.padEnd(22)} ${l.districtId ? "в дистрикте" : "без дистрикта"}`);
+// ---- 3. the first owner, by invitation ----
+if (ownerEmail) {
+  let user = await prisma.user.findUnique({ where: { email: ownerEmail } });
+  let mustSend = false;
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email: ownerEmail,
+        role: "owner",
+        status: "invited",
+        organizationId: org.id,
+        // No password works until the invitee sets one through the link
+        passwordHash: await hashPassword(randomBytes(32).toString("base64url")),
+      },
+    });
+    console.log(`\nвладелец: ${ownerEmail} — аккаунт создан, ждёт приглашения`);
+    mustSend = true;
+  } else if (user.organizationId && user.organizationId !== org.id) {
+    console.error(`\n✗ ${ownerEmail} уже состоит в другой организации`);
+    process.exit(1);
+  } else if (user.status === "active") {
+    console.log(`\nвладелец: ${ownerEmail} уже активен${user.role === "owner" ? "" : ` (роль ${user.role}, не owner — поменяй на экране Team)`}`);
+  } else if (user.status === "deactivated") {
+    console.error(`\n✗ ${ownerEmail} деактивирован — верни его к жизни на экране Team, приглашать заново нельзя`);
+    process.exit(1);
+  } else {
+    // invited, not yet through the link
+    if (user.organizationId !== org.id || user.role !== "owner") {
+      user = await prisma.user.update({ where: { id: user.id }, data: { organizationId: org.id, role: "owner" } });
+    }
+    console.log(`\nвладелец: ${ownerEmail} уже приглашён${resend ? ", отправляю заново" : " — добавь --resend, чтобы отправить письмо ещё раз"}`);
+    mustSend = resend;
+  }
+
+  if (mustSend) {
+    // A fresh link supersedes any unused one, same as the app's own flow
+    await prisma.authToken.updateMany({ where: { userId: user.id, type: "password_reset", usedAt: null }, data: { usedAt: new Date() } });
+    const { raw, hash } = generateToken();
+    await prisma.authToken.create({ data: { id: hash, userId: user.id, type: "password_reset", expiresAt: new Date(Date.now() + INVITE_TTL_MS) } });
+    const link = `${base}/reset-password?token=${raw}`;
+    const mode = mailerMode();
+    if (mode === "console") {
+      console.log(`  почта не настроена — передай ссылку сам, она одноразовая и живёт 72 часа:\n  ${link}`);
+    } else {
+      const ok = await sendMail(inviteMail(ownerEmail, link, { organization: org.name, invitedBy: "Qimby", role: "owner", ttlHours: INVITE_TTL_MS / 3_600_000 }));
+      console.log(ok ? `  письмо ушло через ${mode}` : `  ✗ письмо не ушло — вот ссылка, передай сам:\n  ${link}`);
+    }
+  }
+}
+
+// ---- 4. what the organization looks like now ----
+const [members, locs] = await Promise.all([
+  prisma.user.findMany({ where: { organizationId: org.id }, select: { email: true, role: true, status: true }, orderBy: { createdAt: "asc" } }),
+  prisma.location.findMany({ where: { organizationId: org.id }, select: { name: true, deactivatedAt: true }, orderBy: { name: "asc" } }),
+]);
+console.log(`\nВ организации сейчас:`);
+for (const m of members) console.log(`  ${m.email.padEnd(28)} ${m.role.padEnd(16)} ${m.status}`);
+if (!members.some((m) => m.role === "owner")) console.log(`  владельца нет — добавь --owner e-mail`);
+console.log(`\nРестораны: ${locs.length ? "" : "пока нет — владелец добавит их сам на экране Restaurants & people"}`);
+for (const l of locs) console.log(`  ${l.name}${l.deactivatedAt ? "  (закрыт)" : ""}`);
+const orphans = await prisma.location.count({ where: { organizationId: null } });
+if (orphans) console.log(`\nБез организации остаётся ресторанов: ${orphans} — --attach "имя", если они этого клиента`);
 
 await prisma.$disconnect();

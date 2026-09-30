@@ -120,28 +120,29 @@ async function resolveScope(
   districtIds: string[] | undefined,
   locationIds: string[] | undefined,
 ): Promise<AuthResult<{ districtIds: string[]; locationIds: string[] }>> {
-  if (role === "district_manager") {
-    const ids = [...new Set(districtIds ?? [])];
-    if (ids.length) {
-      const found = await prisma.district.findMany({ where: { id: { in: ids }, organizationId }, select: { id: true } });
-      if (found.length !== ids.length) return fail("unknown_district", "One of those districts does not exist here", 400);
-    }
-    return { ok: true, data: { districtIds: ids, locationIds: [] } };
-  }
-  if (role === "technician") {
-    const ids = [...new Set(locationIds ?? [])];
-    if (ids.length) {
-      const found = await prisma.location.findMany({ where: { id: { in: ids }, organizationId }, select: { id: true } });
-      if (found.length !== ids.length) return fail("unknown_location", "One of those locations does not exist here", 400);
-      const reach = await visibleLocationIds(actor);
-      if (!withinReach(ids, reach)) {
-        return fail("beyond_reach", "You can only hand out locations you can see yourself", 403);
-      }
-    }
-    return { ok: true, data: { districtIds: [], locationIds: ids } };
-  }
   // Owners and admins have no scope rows: their reach is the organization itself.
-  return { ok: true, data: { districtIds: [], locationIds: [] } };
+  if (role !== "district_manager" && role !== "technician") {
+    return { ok: true, data: { districtIds: [], locationIds: [] } };
+  }
+  const dIds = role === "district_manager" ? [...new Set(districtIds ?? [])] : [];
+  if (dIds.length) {
+    const found = await prisma.district.findMany({ where: { id: { in: dIds }, organizationId }, select: { id: true } });
+    if (found.length !== dIds.length) return fail("unknown_district", "One of those districts does not exist here", 400);
+  }
+  // Both roles take locations one by one; that is how the owner's table hands them out.
+  const lIds = [...new Set(locationIds ?? [])];
+  if (lIds.length) {
+    const found = await prisma.location.findMany({
+      where: { id: { in: lIds }, organizationId, deactivatedAt: null },
+      select: { id: true },
+    });
+    if (found.length !== lIds.length) return fail("unknown_location", "One of those locations does not exist here", 400);
+    const reach = await visibleLocationIds(actor);
+    if (!withinReach(lIds, reach)) {
+      return fail("beyond_reach", "You can only hand out locations you can see yourself", 403);
+    }
+  }
+  return { ok: true, data: { districtIds: dIds, locationIds: lIds } };
 }
 
 async function issueInvite(userId: string): Promise<string> {

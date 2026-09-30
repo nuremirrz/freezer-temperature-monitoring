@@ -72,6 +72,21 @@ function StatusCard({ loc }: { loc: LocationDetail }) {
   const alerts = loc.units.filter((u) => u.status === "alert").length;
   const offline = loc.units.filter((u) => u.status === "offline").length;
 
+  // A restaurant the owner just added: nothing to be normal yet, and saying so would be a lie.
+  if (loc.units.length === 0) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-line bg-panel p-4">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-offline-soft">
+          <Refrigerator size={20} className="text-muted" />
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-ink">No equipment yet</div>
+          <div className="text-xs text-muted">Units and sensors are added by Qimby at installation</div>
+        </div>
+      </div>
+    );
+  }
+
   if (alerts > 0) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-alert/25 bg-alert-soft p-4">

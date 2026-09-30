@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { UserPlus, Mail, MailX, UserX, Pencil, AlertTriangle } from "lucide-react";
 import PageShell from "@/components/PageShell";
 import { useMe } from "@/components/SessionProvider";
-import { teamApi, districtsApi, type Member, type DistrictView } from "@/lib/team-client";
+import { teamApi, type Member } from "@/lib/team-client";
 import { api, type LocationSummary } from "@/lib/api";
-import { canManageTeam, canManageDistricts, invitableRoles } from "@/lib/auth/permissions";
+import { canManageTeam, invitableRoles } from "@/lib/auth/permissions";
 import type { UserRole } from "@/generated/prisma/client";
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -36,48 +36,33 @@ function StatusBadge({ m }: { m: Member }) {
 
 function scopeSummary(m: Member): string {
   if (m.role === "owner") return "Whole organization";
-  if (m.role === "district_manager") return m.districts.length ? m.districts.map((d) => d.name).join(", ") : "No districts yet";
-  return m.locations.length ? m.locations.map((l) => l.name).join(", ") : "No locations yet";
+  // A manager may still hold a district from before the table took over; show it alongside.
+  const names = [...m.districts.map((d) => d.name), ...m.locations.map((l) => l.name)];
+  return names.length ? names.join(", ") : "No restaurants yet";
 }
 
-/** Pick which districts (for a manager) or locations (for a technician) an account may reach. */
+/**
+ * Pick which restaurants an account may reach. Managers and technicians are both assigned
+ * restaurant by restaurant — the owner's table on the Restaurants page does the same thing
+ * from the other side. An owner needs no picking: they see the whole organization.
+ */
 function ScopePicker({
   role,
-  districts,
   locations,
-  districtIds,
   locationIds,
   onChange,
 }: {
   role: UserRole;
-  districts: DistrictView[];
   locations: LocationSummary[];
-  districtIds: string[];
   locationIds: string[];
   onChange: (next: { districtIds: string[]; locationIds: string[] }) => void;
 }) {
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
-  if (role === "district_manager") {
+  if (role === "district_manager" || role === "technician") {
     return (
       <fieldset>
-        <legend className="mb-1.5 text-xs font-medium text-muted">Districts</legend>
-        {districts.length === 0 && <p className="text-xs text-muted">No districts exist yet — create some first.</p>}
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {districts.map((d) => (
-            <label key={d.id} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm">
-              <input type="checkbox" checked={districtIds.includes(d.id)} onChange={() => onChange({ districtIds: toggle(districtIds, d.id), locationIds: [] })} />
-              <span className="truncate">{d.name}</span>
-              <span className="ml-auto text-xs text-muted">{d.locations.length}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-    );
-  }
-  if (role === "technician") {
-    return (
-      <fieldset>
-        <legend className="mb-1.5 text-xs font-medium text-muted">Locations</legend>
+        <legend className="mb-1.5 text-xs font-medium text-muted">Restaurants</legend>
+        {locations.length === 0 && <p className="text-xs text-muted">No restaurants yet — add them on the Restaurants page first.</p>}
         <div className="grid gap-1.5 sm:grid-cols-2">
           {locations.map((l) => (
             <label key={l.id} className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm">
@@ -94,14 +79,12 @@ function ScopePicker({
 
 function MemberModal({
   existing,
-  districts,
   locations,
   roles,
   onClose,
   onSaved,
 }: {
   existing: Member | null;
-  districts: DistrictView[];
   locations: LocationSummary[];
   roles: readonly UserRole[];
   onClose: () => void;
@@ -160,7 +143,7 @@ function MemberModal({
               ))}
             </select>
           </label>
-          <ScopePicker role={role} districts={districts} locations={locations} {...scope} onChange={setScope} />
+          <ScopePicker role={role} locations={locations} locationIds={scope.locationIds} onChange={setScope} />
         </div>
         {error && <p className="mt-3 text-sm text-alert">{error}</p>}
         <div className="mt-5 flex justify-end gap-3">
@@ -206,7 +189,6 @@ export default function TeamPage() {
   const me = useMe();
   const roles = useMemo(() => invitableRoles(me), [me]);
   const [members, setMembers] = useState<Member[] | null>(null);
-  const [districts, setDistricts] = useState<DistrictView[]>([]);
   const [locations, setLocations] = useState<LocationSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ kind: "invite" } | { kind: "edit"; m: Member } | { kind: "deactivate"; m: Member } | { kind: "revoke"; m: Member } | null>(null);
@@ -221,13 +203,11 @@ export default function TeamPage() {
     Promise.all([
       teamApi.list(),
       api.locations().then((r) => r.locations).catch(() => [] as LocationSummary[]),
-      canManageDistricts(me) ? districtsApi.list() : Promise.resolve(null),
-    ]).then(([team, locs, dist]) => {
+    ]).then(([team, locs]) => {
       if (!alive) return;
       if (!team.ok) return setError(team.error.message);
       setMembers(team.data.members);
       setLocations(locs);
-      if (dist?.ok) setDistricts(dist.data.districts);
     });
     return () => { alive = false; };
   }, [me, tick]);
@@ -302,10 +282,10 @@ export default function TeamPage() {
       )}
 
       {modal?.kind === "invite" && (
-        <MemberModal existing={null} districts={districts} locations={locations} roles={roles} onClose={() => setModal(null)} onSaved={() => done("Invitation sent")} />
+        <MemberModal existing={null} locations={locations} roles={roles} onClose={() => setModal(null)} onSaved={() => done("Invitation sent")} />
       )}
       {modal?.kind === "edit" && (
-        <MemberModal existing={modal.m} districts={districts} locations={locations} roles={roles} onClose={() => setModal(null)} onSaved={() => done()} />
+        <MemberModal existing={modal.m} locations={locations} roles={roles} onClose={() => setModal(null)} onSaved={() => done()} />
       )}
       {modal?.kind === "deactivate" && (
         <Confirm

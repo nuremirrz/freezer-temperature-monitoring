@@ -28,7 +28,7 @@ export interface DistrictsView {
 }
 
 const districtInclude = {
-  locations: { select: { id: true, name: true }, orderBy: { name: "asc" as const } },
+  locations: { where: { deactivatedAt: null }, select: { id: true, name: true }, orderBy: { name: "asc" as const } },
   managers: { include: { user: { select: { id: true, email: true, name: true } } } },
 } as const;
 
@@ -62,7 +62,7 @@ export async function listDistricts(session: CurrentSession, organizationId?: st
   const [districts, unassigned] = await Promise.all([
     prisma.district.findMany({ where: { organizationId: org.data }, include: districtInclude, orderBy: { name: "asc" } }),
     prisma.location.findMany({
-      where: { organizationId: org.data, districtId: null },
+      where: { organizationId: org.data, districtId: null, deactivatedAt: null },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
