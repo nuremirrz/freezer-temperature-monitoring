@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { MapPin, Users, LayoutGrid, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
 import { authApi } from "@/lib/auth-client";
-import { canManageTeam, canManageLocations } from "@/lib/auth/permissions";
+import { canManageTeam, canManageLocations, invitableRoles } from "@/lib/auth/permissions";
 import { useMe } from "./SessionProvider";
 import QimbyMark from "./QimbyMark";
 
@@ -30,7 +30,9 @@ export default function Sidebar() {
   // Drawn by the same rules the server enforces: a link that would only lead to a 403 is not a link.
   const NAV = [
     { href: "/locations", title: "Locations", icon: MapPin },
-    ...(canManageTeam(me) ? [{ href: "/team", title: "Team", icon: Users }] : []),
+    // A manager cannot run the team, but may invite technicians onto their restaurants — the
+    // page knows the difference; the menu only has to let them reach it.
+    ...(canManageTeam(me) || invitableRoles(me).length > 0 ? [{ href: "/team", title: "Team", icon: Users }] : []),
     ...(canManageLocations(me) ? [{ href: "/organization", title: "Restaurants & people", icon: LayoutGrid }] : []),
   ];
 
