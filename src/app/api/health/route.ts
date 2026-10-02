@@ -36,6 +36,8 @@ export async function GET() {
       lastReadingAt: f.lastReadingAt?.toISOString() ?? null,
       minutesSinceLastReading: f.minutesSinceReading,
       readingsStalledAfterMinutes: READINGS_STALLED_AFTER_MIN,
+      // The Render free instance has 512 MB; this is what the Node process holds right now.
+      memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
       notifications: notificationHealth(),
       // "console" means confirmation and reset links are only being printed to this log —
       // nobody can finish signing up or recover a password until a provider is configured.
