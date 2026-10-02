@@ -204,10 +204,11 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     const ducts = points.map((p) => p.probeTempF).filter((v): v is number => v !== null);
 
     if (isAC) {
-      // The client's rule: a little air below the duct, a little more above the room
+      // The client's rule: a little air below the duct, a little more above the room — on whole
+      // tens, or the ticks come out as 43.57 / 53.57 and the axis labels are cut to "3.57°F".
       const base: [number, number] = [
-        ducts.length ? Math.min(...ducts) - 5 : 30,
-        rooms.length ? Math.max(...rooms) + 7 : 90,
+        ducts.length ? floorTo(Math.min(...ducts) - 5, 10) : 30,
+        rooms.length ? ceilTo(Math.max(...rooms) + 7, 10) : 90,
       ];
       return { domain: yDomain(base, [...rooms, ...ducts]) };
     }
@@ -313,7 +314,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
               <YAxis
                 domain={chart.domain}
                 ticks={ticksFor(chart.domain)}
-                tickFormatter={(v) => `${v}°F`}
+                tickFormatter={(v) => `${Math.round(v)}°F`}
                 tick={{ fontSize: 11, fill: C.axis }}
                 axisLine={false}
                 tickLine={false}
