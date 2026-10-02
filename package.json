@@ -36,7 +36,8 @@
     "db:sequences": "tsx scripts/db-sequences.mts",
     "sensors:unknown": "tsx scripts/unknown-devices.mts",
     "db:usage": "tsx scripts/db-usage.mts",
-    "unit:detach": "tsx scripts/detach-unit.mts"
+    "unit:detach": "tsx scripts/detach-unit.mts",
+    "unit:history": "tsx scripts/unit-history.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
