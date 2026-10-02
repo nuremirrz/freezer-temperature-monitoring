@@ -188,5 +188,12 @@ for (const seed of LOCATIONS) {
   }
 }
 
+const orphans = await prisma.location.findMany({ where: { organizationId: null }, select: { name: true } });
+if (orphans.length) {
+  // A restaurant outside every organization is seen by Qimby's team and by whoever was granted
+  // it directly — and by no owner. San Bernardino sat invisible to its owner for an hour this way.
+  console.log(`\nБез организации: ${orphans.map((l) => l.name).join(", ")}`);
+  console.log(`  владелец их не увидит, пока не привяжешь: npm run org:setup -- --name "…" --attach "имя"`);
+}
 console.log(`\nГотово. Дальше: npm run sensors:import`);
 await prisma.$disconnect();
