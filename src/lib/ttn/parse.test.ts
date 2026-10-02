@@ -303,3 +303,24 @@ describe("isProbeDisconnected", () => {
     expect(isProbeDisconnected(undefined, undefined)).toBe(true);
   });
 });
+
+describe("LHT65N with a DS18B20 probe", () => {
+  it("reads TempF_DS as the external probe, the way TempF_TMP117 is read — San Bernardino's four ACs", () => {
+    const r = parseTtnUplink(
+      {
+        end_device_ids: { device_id: "bk4808-san-bernardino-ac1-dining", dev_eui: "A8404122A3634EA6" },
+        received_at: "2026-10-03T01:40:00Z",
+        uplink_message: {
+          received_at: "2026-10-03T01:40:00Z",
+          decoded_payload: { BatV: 3.178, Bat_status: "Good", Ext_sensor: "Temperature Sensor", Hum_SHT: 44.6, Node_type: "LHT65N", TempC_DS: 10.18, TempC_SHT: 21.95, TempF_DS: 50.32, TempF_SHT: 71.51 },
+        },
+      },
+      new Date("2026-10-03T01:40:00Z"),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uplink.nodeType).toBe("LHT65N");
+    expect(r.uplink.channels).toEqual([{ channel: 1, tempF: 50.32 }]);
+    expect(r.uplink.ambientTempF).toBe(71.51);
+  });
+});

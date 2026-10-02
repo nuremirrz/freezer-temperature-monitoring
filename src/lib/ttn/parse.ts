@@ -4,7 +4,7 @@ import { z } from "zod";
  * Tolerant parser for The Things Network uplink webhooks from a mixed Dragino fleet.
  *
  *  - LTC2   — two external probes: TempF_Channel1 / TempF_Channel2 → channels 1 and 2
- *  - LHT65N — one external probe (TempF_TMP117 → channel 1) plus a built-in air sensor
+ *  - LHT65N — one external probe (TempF_TMP117, or TempF_DS for a DS18B20 → channel 1) plus a built-in air sensor
  *             (TempF_SHT / Hum_SHT → ambient values on the Sensor, never a Reading)
  *
  * The branch is chosen by `decoded_payload.Node_type`; when it is missing we infer it
@@ -77,6 +77,9 @@ const decodedPayloadSchema = z.looseObject({
   // LHT65N
   TempF_TMP117: num,
   TempC_TMP117: num,
+  /** The same jack with a DS18B20 probe in it — San Bernardino's four — decodes under this name */
+  TempF_DS: num,
+  TempC_DS: num,
   TempF_SHT: num,
   TempC_SHT: num,
   Hum_SHT: num,
@@ -145,7 +148,7 @@ export function detectNodeType(payload: DecodedPayload | undefined): string | un
   if (payload.Node_type?.trim()) return payload.Node_type.trim().toUpperCase();
   const has = (k: keyof DecodedPayload) => payload[k] !== undefined;
   if (has("TempF_Channel1") || has("TempF_Channel2") || has("Temp_Channel1") || has("Temp_Channel2")) return "LTC2";
-  if (has("TempF_TMP117") || has("TempC_TMP117") || has("TempF_SHT") || has("TempC_SHT") || has("Hum_SHT")) return "LHT65N";
+  if (has("TempF_TMP117") || has("TempC_TMP117") || has("TempF_DS") || has("TempC_DS") || has("TempF_SHT") || has("TempC_SHT") || has("Hum_SHT")) return "LHT65N";
   return undefined;
 }
 
@@ -221,8 +224,9 @@ export function parseTtnUplink(body: unknown, now: Date = new Date()): ParseResu
       takeProbe(2, payload?.Temp_Channel2, payload?.TempF_Channel2, channels, skippedChannels);
       break;
     case "LHT65N":
-      // The external probe is the unit temperature; the built-in SHT sensor describes the air around the device
-      takeProbe(1, payload?.TempC_TMP117, payload?.TempF_TMP117, channels, skippedChannels);
+      // The external probe is the unit temperature; the built-in SHT sensor describes the air around the device.
+      // Dragino names the probe by its chip: TMP117 on the -E1 probe, DS for a DS18B20 — same jack, same meaning.
+      takeProbe(1, payload?.TempC_TMP117 ?? payload?.TempC_DS, payload?.TempF_TMP117 ?? payload?.TempF_DS, channels, skippedChannels);
       ambientTempF = tempF(payload?.TempF_SHT, payload?.TempC_SHT);
       ambientHum = payload?.Hum_SHT;
       break;
