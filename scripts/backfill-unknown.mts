@@ -119,5 +119,24 @@ const removed = await prisma.unknownUplink.deleteMany({ where: { id: { in: [...c
 
 console.log(`\nЗаписано показаний: ${res.count} (дубликатов пропущено ${pending.length - res.count})`);
 console.log(`Сырых пакетов разобрано и убрано: ${removed.count}`);
+
+// A sensor that was unknown has never been "seen" as far as the offline check knows, and a
+// freshly wired restaurant would open an offline alert per unit until each device's next
+// live packet — six Telegram messages for nothing. The packets just replayed prove the device
+// was talking all along, so its lastSeenAt moves to the newest of them.
+let bumped = 0;
+const latestBySensor = new Map<string, Date>();
+for (const p of pending) {
+  const cur = latestBySensor.get(p.sensorId);
+  if (!cur || p.measuredAt > cur) latestBySensor.set(p.sensorId, p.measuredAt);
+}
+for (const [sensorId, latest] of latestBySensor) {
+  const s = await prisma.sensor.findUnique({ where: { id: sensorId }, select: { lastSeenAt: true } });
+  if (s && (!s.lastSeenAt || latest > s.lastSeenAt)) {
+    await prisma.sensor.update({ where: { id: sensorId }, data: { lastSeenAt: latest } });
+    bumped++;
+  }
+}
+console.log(`lastSeenAt сдвинут вперёд у ${bumped} датчиков`);
 console.log(`Осталось неизвестных: ${await prisma.unknownUplink.count()}`);
 await prisma.$disconnect();
