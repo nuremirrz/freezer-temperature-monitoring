@@ -105,18 +105,19 @@ const LOCATIONS: LocationSeed[] = [
   },
   {
     name: "Burger King #4808",
-    // Street address still to come from Sanjar; the pin sits on the city centre until then and
-    // the owner's table re-geocodes it the moment the street is entered.
-    address: "San Bernardino",
+    address: "935 N Waterman Ave",
     city: "San Bernardino",
     state: "CA",
-    zip: "92401",
-    lat: 34.1083449,
-    lng: -117.2897652,
+    zip: "92410",
+    // Census geocoder, 3 Oct 2026: 935 N WATERMAN AVE, SAN BERNARDINO, CA, 92410
+    lat: 34.1166877,
+    lng: -117.2787188,
     timezone: "America/Los_Angeles",
-    // The gateway is registered in somebody else's TTN account; ours lists none.
+    // From "Qimby units list.xlsx", sheet Gateway (3 Oct 2026). The gateway is registered in
+    // somebody else's TTN account — ours lists none — but it is the one serving this restaurant.
+    gateway: { ttnGatewayId: "a8404121147c4179", eui: "A8404121147C4179" },
     // Five sensors (2 Oct 2026): four LHT65N on the ACs with no duct probe fitted, and one
-    // LTC2 with both probes used — channel 1 in the freezer, channel 2 in the cooler.
+    // LTC2-HT with both probes used — channel 1 in the freezer, channel 2 in the cooler.
     units: [
       { name: "Walk-in Cooler", ...COOLER },
       { name: "Walk-in Freezer", ...FREEZER },
