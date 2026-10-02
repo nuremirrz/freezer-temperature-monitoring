@@ -23,9 +23,11 @@ for (const u of units) {
   const [d, w, last] = await Promise.all([
     prisma.reading.count({ where: { unitId: u.id, measuredAt: { gte: day } } }),
     prisma.reading.count({ where: { unitId: u.id, measuredAt: { gte: week } } }),
-    prisma.reading.findFirst({ where: { unitId: u.id }, orderBy: { measuredAt: "desc" }, select: { measuredAt: true, tempF: true } }),
+    prisma.reading.findFirst({ where: { unitId: u.id }, orderBy: { measuredAt: "desc" }, select: { measuredAt: true, tempF: true, probeTempF: true } }),
   ]);
-  const age = last ? `${Math.round((now - last.measuredAt.getTime()) / 60_000)} мин назад, ${Math.round(last.tempF)}°F` : "никогда";
+  // An AC shows its duct beside the room, so a probe that is plugged in but never decoded stands out
+  const duct = last && u.type === "ac" ? (last.probeTempF === null ? ", дакт —" : `, дакт ${Math.round(last.probeTempF)}°F`) : "";
+  const age = last ? `${Math.round((now - last.measuredAt.getTime()) / 60_000)} мин назад, ${Math.round(last.tempF)}°F${duct}` : "никогда";
   console.log(`${`${u.location.name} · ${u.name}`.padEnd(44)} ${String(d).padStart(5)} ${String(w).padStart(6)}   ${age}`);
 }
 await prisma.$disconnect();
