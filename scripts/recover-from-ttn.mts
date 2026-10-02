@@ -155,6 +155,20 @@ for (const [label, n] of [...perUnit].sort()) console.log(`  ${label.padEnd(38)}
 const res = await prisma.reading.createMany({ data: rows, skipDuplicates: true });
 console.log(`\nзаписано новых: ${res.count}   уже были, пропущено: ${rows.length - res.count}`);
 
+// A reading that was already there may be missing its duct: San Bernardino's four ACs were
+// recorded for a day with a probe the parser did not read yet. The row exists, so the insert
+// skipped it; the duct it should have carried is filled in here, and only where it is empty.
+let ductFilled = 0;
+for (const r of rows) {
+  if (r.probeTempF === null) continue;
+  const u = await prisma.reading.updateMany({
+    where: { sensorId: r.sensorId, channel: r.channel, measuredAt: r.measuredAt, probeTempF: null },
+    data: { probeTempF: r.probeTempF },
+  });
+  ductFilled += u.count;
+}
+if (ductFilled) console.log(`дакт дописан в уже существующие показания: ${ductFilled}`);
+
 // The offline check reads lastSeenAt; a recovered packet counts as the device having spoken.
 let bumped = 0;
 for (const s of sensors) {
