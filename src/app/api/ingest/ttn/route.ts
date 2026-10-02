@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { parseTtnUplink, ParsedUplink } from "@/lib/ttn/parse";
 import { processNewReading, resolveOfflineForSensor } from "@/lib/alerts/service";
 import { readingsFromUplink } from "@/lib/ttn/readings";
+import { noteUnreadFields } from "@/lib/ttn/unread";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "unparseable", error: parsed.error }, { status: 200 });
   }
   const u = parsed.uplink;
+  // A field we do not read is news, and news goes to the group once, not to the log forever.
+  if (u.unreadFields.length) void noteUnreadFields(u.devEui, u.deviceId, u.unreadFields);
 
   const sensor = await prisma.sensor.findUnique({
     where: { devEui: u.devEui },

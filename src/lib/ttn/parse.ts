@@ -57,6 +57,12 @@ export interface ParsedUplink {
   ambientHum?: number;
   /** Strongest gateway that heard the uplink */
   gateway?: ParsedGateway;
+  /**
+   * Fields that look like a temperature or humidity and were not read. Empty on every
+   * device we know. A new probe or decoder shows up here first — the DS18B20 in San
+   * Bernardino went a day unread because nothing said "TempF_DS is new".
+   */
+  unreadFields: string[];
 }
 
 export type ParseResult =
@@ -214,6 +220,7 @@ export function parseTtnUplink(body: unknown, now: Date = new Date()): ParseResu
   const nodeType = detectNodeType(payload);
   const channels: ParsedChannel[] = [];
   const skippedChannels: Channel[] = [];
+  const unreadFields = unreadMeasurementFields(payload, nodeType);
   let ambientTempF: number | undefined;
   let ambientHum: number | undefined;
   let unsupportedNodeType = false;
@@ -255,6 +262,22 @@ export function parseTtnUplink(body: unknown, now: Date = new Date()): ParseResu
       ambientTempF,
       ambientHum,
       gateway: pickBestGateway(msg?.rx_metadata),
+      unreadFields,
     },
   };
+}
+
+/** What each decoder branch consumes. A field outside this list that looks like a measurement is news. */
+const READ_FIELDS: Record<string, readonly string[]> = {
+  LTC2: ["TempF_Channel1", "TempF_Channel2", "Temp_Channel1", "Temp_Channel2"],
+  LHT65N: ["TempF_TMP117", "TempC_TMP117", "TempF_DS", "TempC_DS", "TempF_SHT", "TempC_SHT", "Hum_SHT"],
+};
+const MEASUREMENT_RE = /^(temp|hum)/i;
+
+function unreadMeasurementFields(payload: DecodedPayload | undefined, nodeType: string | undefined): string[] {
+  if (!payload) return [];
+  const read = new Set(READ_FIELDS[nodeType ?? ""] ?? []);
+  return Object.keys(payload)
+    .filter((k) => MEASUREMENT_RE.test(k) && !read.has(k))
+    .sort();
 }

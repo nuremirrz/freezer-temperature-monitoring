@@ -324,3 +324,25 @@ describe("LHT65N with a DS18B20 probe", () => {
     expect(r.uplink.ambientTempF).toBe(71.51);
   });
 });
+
+describe("fields the parser did not read", () => {
+  const packet = (decoded_payload: Record<string, unknown>) => ({
+    end_device_ids: { device_id: "x", dev_eui: "A84041000000000A" },
+    uplink_message: { received_at: "2026-10-03T01:40:00Z", decoded_payload },
+  });
+
+  it("is empty for every payload we know how to read", () => {
+    const r = parseTtnUplink(packet({ Node_type: "LHT65N", TempF_DS: 50, TempF_SHT: 71, Hum_SHT: 44 }), new Date());
+    expect(r.ok && r.uplink.unreadFields).toEqual([]);
+  });
+
+  it("names a temperature field a new probe brings — what TempF_DS would have looked like", () => {
+    const r = parseTtnUplink(packet({ Node_type: "LHT65N", TempF_NEWPROBE: 50, TempF_SHT: 71 }), new Date());
+    expect(r.ok && r.uplink.unreadFields).toEqual(["TempF_NEWPROBE"]);
+  });
+
+  it("ignores fields that are not measurements", () => {
+    const r = parseTtnUplink(packet({ Node_type: "LHT65N", TempF_SHT: 71, Ext_sensor: "Temperature Sensor", Work_mode: "x" }), new Date());
+    expect(r.ok && r.uplink.unreadFields).toEqual([]);
+  });
+});

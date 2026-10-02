@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { notificationHealth } from "@/lib/notify";
 import { mailStatus } from "@/lib/auth/mailer";
 import { currentFreshness, READINGS_STALLED_AFTER_MIN } from "@/lib/alerts/freshness";
+import { unreadFieldsSeen } from "@/lib/ttn/unread";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,9 @@ export async function GET() {
       readingsStalledAfterMinutes: READINGS_STALLED_AFTER_MIN,
       // The Render free instance has 512 MB; this is what the Node process holds right now.
       memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      // Measurement fields some device sends that the parser does not read — a new probe or
+      // decoder. Empty is the normal state; anything here is data being thrown away.
+      unreadFields: unreadFieldsSeen(),
       notifications: notificationHealth(),
       // "console" means confirmation and reset links are only being printed to this log —
       // nobody can finish signing up or recover a password until a provider is configured.

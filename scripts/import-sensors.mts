@@ -9,6 +9,11 @@ import { prisma } from "../src/lib/db";
  *
  *   npm run sensors:import                    # apply data/sensors.csv
  *   npm run sensors:import -- --file other.csv --dry-run
+ *   npm run sensors:import -- --location "Burger King #4808"     # write that restaurant's rows only
+ *
+ * --location validates the whole file as always but writes only the rows of one restaurant, so
+ * wiring up a new site cannot touch an old one. On 2 Oct 2026 a full import quietly re-wired
+ * two Whittier probes that had been detached on purpose.
  */
 
 interface Row {
@@ -29,6 +34,7 @@ const arg = (name: string) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 const dryRun = process.argv.includes("--dry-run");
+const onlyLocation = arg("location")?.trim();
 const file = arg("file") ?? "data/sensors.csv";
 
 const text = readFileSync(file, "utf8");
@@ -102,6 +108,16 @@ if (problems.length) {
 }
 
 console.log(`${file}: ${rows.length} probes across ${byEui.size} sensors, no problems found.`);
+if (onlyLocation) {
+  // The file is checked whole; only this restaurant's sensors are written
+  for (const [eui, group] of [...byEui]) if (group[0].location !== onlyLocation) byEui.delete(eui);
+  if (!byEui.size) {
+    console.error(`No rows for "${onlyLocation}" — known: ${[...new Set(rows.map((r) => r.location))].map((l) => `"${l}"`).join(", ")}`);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+  console.log(`--location "${onlyLocation}": ${byEui.size} sensor(s) of that restaurant, the rest of the file is left alone.`);
+}
 if (dryRun) {
   for (const [eui, group] of byEui) {
     console.log(`  ${eui} @ ${group[0].location}`);

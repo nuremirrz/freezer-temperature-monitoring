@@ -175,7 +175,7 @@ days without a send.
 | `GET/POST /api/team`, `/api/team/[userId]`, `…/invite`, `…/deactivate` | team management |
 | `GET/POST /api/districts`, `/api/districts/[id]` | districts |
 | `POST /api/auth/login`, `logout`, `forgot-password`, `reset-password`, `GET /api/auth/me` | accounts; `/api/auth/register` answers 403 `registration_closed` |
-| `GET /api/health` | public: `ok` or `degraded`, last uplink, notification and mail channel state |
+| `GET /api/health` | public: `ok` or `degraded` with a `reason`; last uplink and last written reading; process memory; measurement fields the parser does not read; notification and mail channel state |
 
 Every read API requires a session (`401` otherwise) and filters by the account's reach.
 Passwords are stored as scrypt hashes only; the session cookie holds a random token whose
@@ -186,7 +186,12 @@ rate-limited per IP and reject cross-site origins.
 
 | Command | What it does |
 | --- | --- |
-| `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it |
+| `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it; `--location "…"` writes one restaurant's sensors only |
+| `npm run sensors:unknown` | devices talking to us without a mapping: type, last temperatures per channel |
+| `npm run chart:check` | per unit: readings in the last day and week, the latest value, the duct beside the room for an AC |
+| `npm run db:sequences [-- --fix]` | the id counters against the rows they number; a restore leaves them behind |
+| `npm run db:usage` | database size against Supabase's 500 MB, biggest tables, growth per day |
+| `npm run unit:detach -- --location "…" --unit "…" [--purge] --yes` | take a unit's probes off and, with --purge, forget what they wrote |
 | `npm run access:grant -- --email … --role … [--location …] [--invite]` | create or update an account, grant locations, print an invitation link |
 | `npm run org:setup -- --name "…" --owner … [--attach "…"]` | create a customer's empty organization, invite its first owner by e-mail, attach named restaurants |
 | `npm run test:accounts` | one account per role plus a second organization, local databases only |
@@ -197,7 +202,8 @@ rate-limited per IP and reject cross-site origins.
 | `npm run mail:test -- --to …` | send one real e-mail and report what the server said |
 | `npm run db:studio` | browse the database |
 
-Every script prints the database host it resolved to on its first line
+**Wiring up a new restaurant** is a six-step procedure with a check at every step:
+[docs/onboarding.md](docs/onboarding.md). Every script prints the database host it resolved to on its first line
 (`db → localhost…` or `⚠ REMOTE db → …`). Read it before letting a write run: `.env.local` is
 loaded before `.env`, and a real environment variable beats both, which is how a script is
 pointed at production on purpose:
