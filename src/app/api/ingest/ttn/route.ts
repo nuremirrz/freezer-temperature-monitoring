@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseTtnUplink, ParsedUplink } from "@/lib/ttn/parse";
 import { processNewReading, resolveOfflineForSensor } from "@/lib/alerts/service";
+import { readingsFromUplink } from "@/lib/ttn/readings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,55 +99,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Readings — one per channel that is both reporting and wired to a unit.
-  //
-  // An AC is the exception: its probe hangs in the supply duct, and the client judges an air
-  // conditioner by the room it is meant to be cooling ("АС с дактов нерелевантное
-  // измерение"). Where that room reading comes from depends on the hardware:
-  //
-  //   LHT65N/S — a built-in air sensor reports it, and the single probe is the duct.
-  //   LTC2     — no built-in sensor, two external probes instead. Whichever probe was wired
-  //              to the unit is the room one; the other is the duct.
-  //
-  // Either way the unit stores the room as its reading and the duct beside it.
+  // Readings — one per unit wired to this sensor, by the rule in src/lib/ttn/readings.ts:
+  // cold storage is its probe, an AC is the room it cools, with the duct kept beside it.
+  const mappings = sensor.channels.flatMap((c) =>
+    c.unitId && c.unit ? [{ channel: c.channel, unitId: c.unitId, unitType: c.unit.type }] : [],
+  );
+  const { readings, unmapped, noRoomTemp } = readingsFromUplink(u, mappings);
   const inserted: { unitId: string; channel: number; tempF: number }[] = [];
-  const unmapped: number[] = [];
-  const noRoomTemp: number[] = [];
-  for (const ch of u.channels) {
-    const mapping = sensor.channels.find((c) => c.channel === ch.channel);
-    if (!mapping?.unitId) {
-      unmapped.push(ch.channel);
-      continue;
-    }
-    const isAC = mapping.unit?.type === "ac";
-    const hasBuiltInAir = u.ambientTempF !== undefined;
-    const tempF = isAC && hasBuiltInAir ? u.ambientTempF : ch.tempF;
-    const ductTempF = !isAC
-      ? null
-      : hasBuiltInAir
-        ? ch.tempF
-        : (u.channels.find((c) => c.channel !== ch.channel)?.tempF ?? null);
-    if (tempF === undefined) {
-      // An AC whose uplink carried no room temperature at all: recording the duct value
-      // instead would quietly compare the wrong number against the unit's range.
-      noRoomTemp.push(ch.channel);
-      continue;
-    }
+  for (const r of readings) {
     const res = await prisma.reading.createMany({
-      data: [
-        {
-          unitId: mapping.unitId,
-          sensorId: sensor.id,
-          channel: ch.channel,
-          tempF,
-          // Kept beside it so the AC chart can draw the duct line over time, not just now
-          probeTempF: ductTempF,
-          measuredAt: u.receivedAt,
-        },
-      ],
+      data: [{ unitId: r.unitId, sensorId: sensor.id, channel: r.channel, tempF: r.tempF, probeTempF: r.probeTempF, measuredAt: u.receivedAt }],
       skipDuplicates: true,
     });
-    if (res.count > 0) inserted.push({ unitId: mapping.unitId, channel: ch.channel, tempF });
+    if (res.count > 0) inserted.push({ unitId: r.unitId, channel: r.channel, tempF: r.tempF });
   }
 
   // Alerts — after the writes. Cheap queries; notifications inside are fire-and-forget.
@@ -179,7 +144,7 @@ function summary(u: ParsedUplink, readings: number, unmapped: number[], noRoomTe
     nodeType: u.nodeType ?? null,
     measuredAt: u.receivedAt.toISOString(),
     readings,
-    duplicates: u.channels.length - unmapped.length - noRoomTemp.length - readings,
+    duplicates: Math.max(0, u.channels.length - unmapped.length - noRoomTemp.length - readings),
     skippedChannels: u.skippedChannels,
     unmappedChannels: unmapped,
     ...(noRoomTemp.length ? { noRoomTemperature: noRoomTemp } : {}),

@@ -58,7 +58,8 @@ interface LocationSeed {
   lat: number;
   lng: number;
   timezone: string;
-  gateway: { ttnGatewayId: string; eui: string };
+  /** Optional: a restaurant may be served by a gateway registered in somebody else's TTN account. */
+  gateway?: { ttnGatewayId: string; eui: string };
   units: UnitSeed[];
 }
 
@@ -102,6 +103,29 @@ const LOCATIONS: LocationSeed[] = [
       { name: "AC3 - Dining", ...AC_DINING },
     ],
   },
+  {
+    name: "Burger King #4808",
+    // Street address still to come from Sanjar; the pin sits on the city centre until then and
+    // the owner's table re-geocodes it the moment the street is entered.
+    address: "San Bernardino",
+    city: "San Bernardino",
+    state: "CA",
+    zip: "92401",
+    lat: 34.1083449,
+    lng: -117.2897652,
+    timezone: "America/Los_Angeles",
+    // The gateway is registered in somebody else's TTN account; ours lists none.
+    // Five sensors (2 Oct 2026): four LHT65N on the ACs with no duct probe fitted, and one
+    // LTC2 with both probes used — channel 1 in the freezer, channel 2 in the cooler.
+    units: [
+      { name: "Walk-in Cooler", ...COOLER },
+      { name: "Walk-in Freezer", ...FREEZER },
+      { name: "AC1 - Dining", ...AC_DINING },
+      { name: "AC2 - Dining", ...AC_DINING },
+      { name: "AC3 - Kitchen", ...AC_KITCHEN },
+      { name: "AC4 - Kitchen", ...AC_KITCHEN },
+    ],
+  },
 ];
 
 const forceRanges = process.argv.includes("--ranges");
@@ -115,12 +139,16 @@ for (const seed of LOCATIONS) {
   });
   console.log(`\n✓ ${location.name} — ${fields.address}, ${fields.city}, ${fields.state} ${fields.zip}`);
 
-  await prisma.gateway.upsert({
-    where: { ttnGatewayId: gateway.ttnGatewayId },
-    update: { locationId: location.id, eui: gateway.eui },
-    create: { ...gateway, locationId: location.id },
-  });
-  console.log(`  шлюз ${gateway.ttnGatewayId}`);
+  if (gateway) {
+    await prisma.gateway.upsert({
+      where: { ttnGatewayId: gateway.ttnGatewayId },
+      update: { locationId: location.id, eui: gateway.eui },
+      create: { ...gateway, locationId: location.id },
+    });
+    console.log(`  шлюз ${gateway.ttnGatewayId}`);
+  } else {
+    console.log(`  шлюз не указан — ловит чужой, в TTN-аккаунте его нет`);
+  }
 
   for (const u of units) {
     const existing = await prisma.unit.findUnique({

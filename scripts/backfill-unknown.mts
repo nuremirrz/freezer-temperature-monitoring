@@ -1,6 +1,7 @@
 import "./load-env";
 import { prisma } from "../src/lib/db";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
+import { readingsFromUplink } from "../src/lib/ttn/readings";
 
 /**
  * Turns stored raw uplinks into readings, for devices that were unknown when they arrived.
@@ -60,31 +61,17 @@ for (const row of rows) {
   // row has nothing left to tell us.
   consumed.add(row.id);
 
-  for (const ch of u.channels) {
-    const mapping = sensor.channels.find((c) => c.channel === ch.channel);
-    if (!mapping?.unitId || !mapping.unit) continue;
-
-    // Same rule as the live ingest: an AC is judged by the room, which is the built-in air
-    // sensor where there is one and the mapped probe where there is not.
-    const isAC = mapping.unit.type === "ac";
-    const hasBuiltInAir = u.ambientTempF !== undefined;
-    const tempF = isAC && hasBuiltInAir ? u.ambientTempF : ch.tempF;
-    const probeTempF = !isAC
-      ? null
-      : hasBuiltInAir
-        ? ch.tempF
-        : (u.channels.find((c) => c.channel !== ch.channel)?.tempF ?? null);
-    if (tempF === undefined) continue;
-
+  const mappings = sensor.channels.flatMap((c) => (c.unitId && c.unit ? [{ channel: c.channel, unitId: c.unitId, unitType: c.unit.type }] : []));
+  for (const r of readingsFromUplink(u, mappings).readings) {
     pending.push({
       id: row.id,
       sensorId: sensor.id,
-      unitId: mapping.unitId,
-      unitName: mapping.unit.name,
+      unitId: r.unitId,
+      unitName: sensor.channels.find((c) => c.unitId === r.unitId)?.unit?.name ?? r.unitId,
       location: sensor.location.name,
-      channel: ch.channel,
-      tempF,
-      probeTempF,
+      channel: r.channel,
+      tempF: r.tempF,
+      probeTempF: r.probeTempF,
       measuredAt: u.receivedAt,
     });
   }

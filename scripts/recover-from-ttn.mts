@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { prisma } from "../src/lib/db";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
+import { readingsFromUplink } from "../src/lib/ttn/readings";
 
 /**
  * Replays uplinks from TTN's Message Storage into our database.
@@ -140,20 +141,11 @@ for (const { devEui, uplink } of parsed) {
   const sensor = byEui.get(devEui);
   if (!sensor) { unknownDevice++; continue; }
   const u = uplink.uplink;
-  for (const ch of u.channels) {
-    const mapping = sensor.channels.find((c) => c.channel === ch.channel);
-    if (!mapping?.unitId || !mapping.unit) continue;
-    // Same rule as src/app/api/ingest/ttn/route.ts and backfill-unknown.mts: an AC is judged by
-    // the room — the built-in air sensor where there is one, the mapped probe where there is
-    // not — and keeps the other number as the duct. Three copies of this rule is two too many;
-    // it belongs in one shared function, after the outage.
-    const isAC = mapping.unit.type === "ac";
-    const hasBuiltInAir = u.ambientTempF !== undefined;
-    const tempF = isAC && hasBuiltInAir ? u.ambientTempF : ch.tempF;
-    const probeTempF = !isAC ? null : hasBuiltInAir ? ch.tempF : (u.channels.find((c) => c.channel !== ch.channel)?.tempF ?? null);
-    if (tempF === undefined) continue;
-    rows.push({ unitId: mapping.unitId, sensorId: sensor.id, channel: ch.channel, tempF, probeTempF, measuredAt: u.receivedAt });
-    const label = `${sensor.location.name} · ${mapping.unit.name}`;
+  const mappings = sensor.channels.flatMap((c) => (c.unitId && c.unit ? [{ channel: c.channel, unitId: c.unitId, unitType: c.unit.type }] : []));
+  for (const r of readingsFromUplink(u, mappings).readings) {
+    rows.push({ unitId: r.unitId, sensorId: sensor.id, channel: r.channel, tempF: r.tempF, probeTempF: r.probeTempF, measuredAt: u.receivedAt });
+    const unitName = sensor.channels.find((c) => c.unitId === r.unitId)?.unit?.name ?? r.unitId;
+    const label = `${sensor.location.name} · ${unitName}`;
     perUnit.set(label, (perUnit.get(label) ?? 0) + 1);
   }
 }
