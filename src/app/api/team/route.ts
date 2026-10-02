@@ -7,11 +7,12 @@ import { inviteUser, listTeam } from "@/lib/auth/team";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/team — everyone the signed-in account is responsible for. */
-export async function GET() {
+/** GET /api/team[?organizationId=] — everyone the signed-in account is responsible for. */
+export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return unauthorized();
-  const r = await listTeam(session);
+  const organizationId = req.nextUrl.searchParams.get("organizationId") ?? undefined;
+  const r = await listTeam(session, organizationId);
   if (!r.ok) return json({ error: r.code, message: r.message }, r.status);
   return json({ members: r.data });
 }

@@ -11,8 +11,10 @@ export type { Member, InviteInput, MemberPatch, DistrictsView, DistrictView, Org
 
 const json = (body: unknown) => JSON.stringify(body);
 
+const q = (organizationId?: string) => (organizationId ? `?organizationId=${encodeURIComponent(organizationId)}` : "");
+
 export const teamApi = {
-  list: () => call<{ members: Member[] }>("/api/team", { method: "GET" }),
+  list: (organizationId?: string) => call<{ members: Member[] }>(`/api/team${q(organizationId)}`, { method: "GET" }),
   invite: (data: InviteInput) => call<Member>("/api/team", { method: "POST", body: json(data) }),
   update: (userId: string, patch: MemberPatch) =>
     call<Member>(`/api/team/${userId}`, { method: "PATCH", body: json(patch) }),
@@ -30,7 +32,9 @@ export const districtsApi = {
 };
 
 export const organizationApi = {
-  view: () => call<OrganizationView>("/api/organization", { method: "GET" }),
+  /** Every organization an admin may pick from; one entry for anyone else. */
+  list: () => call<{ organizations: { id: string; name: string }[] }>("/api/organizations", { method: "GET" }),
+  view: (organizationId?: string) => call<OrganizationView>(`/api/organization${q(organizationId)}`, { method: "GET" }),
   addLocation: (data: LocationInput) => call<LocationRow>("/api/locations", { method: "POST", body: json(data) }),
   updateLocation: (id: string, patch: LocationPatch) =>
     call<LocationRow>(`/api/locations/${id}`, { method: "PATCH", body: json(patch) }),

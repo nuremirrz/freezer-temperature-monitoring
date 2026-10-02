@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { UserPlus, Mail, MailX, UserX, Pencil, AlertTriangle } from "lucide-react";
 import PageShell from "@/components/PageShell";
 import { useMe } from "@/components/SessionProvider";
-import { teamApi, type Member } from "@/lib/team-client";
-import { api, type LocationSummary } from "@/lib/api";
+import { teamApi, organizationApi, type Member } from "@/lib/team-client";
+import OrgSwitcher, { useAdminOrganization } from "@/components/OrgSwitcher";
+import { api } from "@/lib/api";
 import { canManageTeam, invitableRoles } from "@/lib/auth/permissions";
 import type { UserRole } from "@/generated/prisma/client";
 
@@ -53,7 +54,7 @@ function ScopePicker({
   onChange,
 }: {
   role: UserRole;
-  locations: LocationSummary[];
+  locations: { id: string; name: string }[];
   locationIds: string[];
   onChange: (next: { districtIds: string[]; locationIds: string[] }) => void;
 }) {
@@ -81,11 +82,14 @@ function MemberModal({
   existing,
   locations,
   roles,
+  organizationId,
   onClose,
   onSaved,
 }: {
   existing: Member | null;
-  locations: LocationSummary[];
+  locations: { id: string; name: string }[];
+  /** Only an admin passes this — everyone else is inside one organization already. */
+  organizationId?: string;
   roles: readonly UserRole[];
   onClose: () => void;
   onSaved: () => void;
@@ -105,7 +109,7 @@ function MemberModal({
     setError(null);
     const res = existing
       ? await teamApi.update(existing.id, { name, role, ...scope })
-      : await teamApi.invite({ email, name: name || undefined, role, ...scope });
+      : await teamApi.invite({ email, name: name || undefined, role, ...scope, organizationId });
     setBusy(false);
     if (!res.ok) return setError(res.error.message);
     onSaved();
@@ -187,9 +191,10 @@ function Confirm({ title, body, action, danger, onClose, onConfirm }: {
 
 export default function TeamPage() {
   const me = useMe();
+  const org = useAdminOrganization();
   const roles = useMemo(() => invitableRoles(me), [me]);
   const [members, setMembers] = useState<Member[] | null>(null);
-  const [locations, setLocations] = useState<LocationSummary[]>([]);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ kind: "invite" } | { kind: "edit"; m: Member } | { kind: "deactivate"; m: Member } | { kind: "revoke"; m: Member } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -198,19 +203,23 @@ export default function TeamPage() {
   const [tick, setTick] = useState(0);
   const reload = () => setTick((t) => t + 1);
 
+  const waitingForPick = me.role === "admin" && org.ready && org.organizationId === undefined;
   useEffect(() => {
+    if (!org.ready || waitingForPick) return;
     let alive = true;
-    Promise.all([
-      teamApi.list(),
-      api.locations().then((r) => r.locations).catch(() => [] as LocationSummary[]),
-    ]).then(([team, locs]) => {
+    // An admin's restaurants come from the chosen organization, everyone else's from what they see.
+    const locs: Promise<{ id: string; name: string }[]> =
+      me.role === "admin"
+        ? organizationApi.view(org.organizationId).then((r) => (r.ok ? r.data.locations.filter((l) => l.active) : []))
+        : api.locations().then((r) => r.locations).catch(() => []);
+    Promise.all([teamApi.list(org.organizationId), locs]).then(([team, list]) => {
       if (!alive) return;
       if (!team.ok) return setError(team.error.message);
       setMembers(team.data.members);
-      setLocations(locs);
+      setLocations(list.map((l) => ({ id: l.id, name: l.name })));
     });
     return () => { alive = false; };
-  }, [me, tick]);
+  }, [me, tick, org.ready, org.organizationId, waitingForPick]);
 
   const done = (msg?: string) => { setModal(null); if (msg) setNotice(msg); reload(); };
 
@@ -225,19 +234,25 @@ export default function TeamPage() {
   return (
     <PageShell
       title="Team"
-      actions={roles.length > 0 && (
-        <button onClick={() => setModal({ kind: "invite" })} className={btn.primary}>
-          <UserPlus size={16} /> Invite
-        </button>
-      )}
+      actions={
+        <div className="flex items-center gap-2">
+          <OrgSwitcher organizations={org.organizations} organizationId={org.organizationId} onChange={(id) => { setMembers(null); org.choose(id); }} />
+          {roles.length > 0 && (
+            <button onClick={() => setModal({ kind: "invite" })} disabled={waitingForPick} className={btn.primary}>
+              <UserPlus size={16} /> Invite
+            </button>
+          )}
+        </div>
+      }
     >
+      {waitingForPick && <p className="mb-4 text-sm text-muted">Pick an organization above to see its team.</p>}
       {notice && (
         <div className="mb-4 rounded-lg border border-line bg-panel px-4 py-2.5 text-sm text-ink-soft">
           {notice} <button onClick={() => setNotice(null)} className="ml-2 text-muted hover:text-ink">✕</button>
         </div>
       )}
       {error && <p className="text-sm text-alert">{error}</p>}
-      {members === null && !error && <div className="h-24 animate-pulse rounded-xl bg-panel" />}
+      {members === null && !error && !waitingForPick && <div className="h-24 animate-pulse rounded-xl bg-panel" />}
       {members && members.length === 0 && (
         <p className="rounded-xl border border-line bg-panel p-5 text-sm text-muted">Nobody yet. Invite the first person.</p>
       )}
@@ -282,7 +297,7 @@ export default function TeamPage() {
       )}
 
       {modal?.kind === "invite" && (
-        <MemberModal existing={null} locations={locations} roles={roles} onClose={() => setModal(null)} onSaved={() => done("Invitation sent")} />
+        <MemberModal existing={null} locations={locations} roles={roles} organizationId={org.organizationId} onClose={() => setModal(null)} onSaved={() => done("Invitation sent")} />
       )}
       {modal?.kind === "edit" && (
         <MemberModal existing={modal.m} locations={locations} roles={roles} onClose={() => setModal(null)} onSaved={() => done()} />

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, X, Pencil, Check, Power, UserPlus, MapPin } from "lucide-react";
 import PageShell from "@/components/PageShell";
 import { useMe } from "@/components/SessionProvider";
+import OrgSwitcher, { useAdminOrganization } from "@/components/OrgSwitcher";
 import { organizationApi, type OrganizationView, type LocationRow, type Person, type LocationInput } from "@/lib/team-client";
 import { canManageLocations } from "@/lib/auth/permissions";
 import { US_TIMEZONES, defaultTimezone } from "@/lib/geocode";
@@ -59,7 +60,7 @@ function PeopleCell({ chosen, pool, noun, onChange, disabled }: {
   );
 }
 
-function LocationModal({ existing, onClose, onSaved }: { existing: LocationRow | null; onClose: () => void; onSaved: () => void }) {
+function LocationModal({ existing, organizationId, onClose, onSaved }: { existing: LocationRow | null; organizationId?: string; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<LocationInput>({
     name: existing?.name ?? "",
     address: existing?.address ?? "",
@@ -83,7 +84,7 @@ function LocationModal({ existing, onClose, onSaved }: { existing: LocationRow |
   const save = async () => {
     setBusy(true);
     setError(null);
-    const r = existing ? await organizationApi.updateLocation(existing.id, form) : await organizationApi.addLocation(form);
+    const r = existing ? await organizationApi.updateLocation(existing.id, form) : await organizationApi.addLocation({ ...form, organizationId });
     setBusy(false);
     if (!r.ok) return setError(r.error.message);
     onSaved();
@@ -203,6 +204,7 @@ function Row({ l, view, onChanged, onEdit, onError }: {
 
 export default function OrganizationPage() {
   const me = useMe();
+  const org = useAdminOrganization();
   const [view, setView] = useState<OrganizationView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -211,16 +213,19 @@ export default function OrganizationPage() {
   // Bumping the tick refetches; state is set in the callback, never in the effect body.
   const [tick, setTick] = useState(0);
   const reload = () => setTick((t) => t + 1);
+  // An admin with several customers and no pick yet has nothing to load.
+  const waitingForPick = me.role === "admin" && org.ready && org.organizationId === undefined;
   useEffect(() => {
+    if (!org.ready || waitingForPick) return;
     let alive = true;
-    organizationApi.view().then((r) => {
+    organizationApi.view(org.organizationId).then((r) => {
       if (!alive) return;
       if (!r.ok) return setError(r.error.message);
       setView(r.data);
       setError(null);
     });
     return () => { alive = false; };
-  }, [tick]);
+  }, [tick, org.ready, org.organizationId, waitingForPick]);
 
   const nobody = useMemo(() => view && view.managers.length + view.technicians.length === 0, [view]);
 
@@ -233,18 +238,20 @@ export default function OrganizationPage() {
       title={view ? `${view.organization.name}` : "Restaurants & people"}
       actions={
         <div className="flex items-center gap-2">
+          <OrgSwitcher organizations={org.organizations} organizationId={org.organizationId} onChange={(id) => { setView(null); org.choose(id); }} />
           <Link href="/team" className={btn.secondary}><UserPlus size={16} /> Invite people</Link>
-          <button onClick={() => setModal({ kind: "add" })} className={btn.primary}><Plus size={16} /> Add restaurant</button>
+          <button onClick={() => setModal({ kind: "add" })} disabled={waitingForPick} className={btn.primary}><Plus size={16} /> Add restaurant</button>
         </div>
       }
     >
+      {waitingForPick && <p className="text-sm text-muted">Pick an organization above to see its restaurants and people.</p>}
       {error && <p className="text-sm text-alert">{error}</p>}
       {rowError && (
         <div className="mb-4 rounded-lg border border-alert/30 bg-alert-soft px-4 py-2.5 text-sm text-alert">
           {rowError} <button onClick={() => setRowError(null)} className="ml-2 opacity-70 hover:opacity-100">✕</button>
         </div>
       )}
-      {view === null && !error && <div className="h-24 animate-pulse rounded-xl bg-panel" />}
+      {view === null && !error && !waitingForPick && <div className="h-24 animate-pulse rounded-xl bg-panel" />}
 
       {view && nobody && (
         <p className="mb-4 rounded-xl border border-line bg-panel px-4 py-3 text-sm text-muted">
@@ -276,7 +283,7 @@ export default function OrganizationPage() {
         </div>
       )}
 
-      {modal?.kind === "add" && <LocationModal existing={null} onClose={() => setModal(null)} onSaved={() => { setModal(null); reload(); }} />}
+      {modal?.kind === "add" && <LocationModal existing={null} organizationId={org.organizationId} onClose={() => setModal(null)} onSaved={() => { setModal(null); reload(); }} />}
       {modal?.kind === "edit" && <LocationModal existing={modal.l} onClose={() => setModal(null)} onSaved={() => { setModal(null); reload(); }} />}
     </PageShell>
   );

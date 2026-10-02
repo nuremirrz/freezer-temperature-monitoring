@@ -214,13 +214,14 @@ export async function inviteUser(session: CurrentSession, input: InviteInput, ba
  * technicians on their own locations, since those are the ones they can invite. Qimby's own
  * accounts are never listed — they are not in any organization, and the owner did not add them.
  */
-export async function listTeam(session: CurrentSession): Promise<AuthResult<Member[]>> {
+export async function listTeam(session: CurrentSession, organizationId?: string): Promise<AuthResult<Member[]>> {
   const actor = session.user;
   let where: Prisma.UserWhereInput;
 
   switch (actor.role) {
     case "admin":
-      where = { role: { not: "admin" } };
+      // Qimby's team sees one customer at a time when they say which; all of them otherwise.
+      where = { role: { not: "admin" }, ...(organizationId ? { organizationId } : {}) };
       break;
     case "owner": {
       const org = await organizationFor(actor);
