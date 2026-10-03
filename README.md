@@ -157,8 +157,12 @@ cron. Keep production at one replica: the SSE bus and this loop are in-process.
 
 ### Notifications
 
-`notify()` in `src/lib/notify` sends to a **Telegram group** (`TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_CHAT_ID`); without them messages go to the console. Sent on open and on close, at most
+`notify()` in `src/lib/notify` sends to **Telegram** (`TELEGRAM_BOT_TOKEN`); without a token
+messages go to the console. **Each organization may have its own chat**
+(`npm run org:setup -- --name "…" --telegram <chat id>`, which posts a test message there
+first): its restaurants' alerts go to that chat and nowhere else. An organization without one
+uses the default group, `TELEGRAM_CHAT_ID`, which also receives Qimby's own system messages —
+the write watchdog and unread payload fields — that no customer should see. Sent on open and on close, at most
 once per alert per 30 minutes. With `APP_URL` set each message links to the location screen.
 `npm run telegram -- --token <t>` finds the group's chat id and sends a test message.
 

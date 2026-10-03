@@ -15,6 +15,8 @@ import { INVITE_TTL_MS } from "../src/lib/auth/team";
  *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com --resend
  *   npm run org:setup -- --name "Burger King — Steven" --owner owner@qimby.test --print-link
  *   npm run org:setup -- --name "Burger King — Steven" --attach-user tech@example.com
+ *   npm run org:setup -- --name "Burger King — Steven" --telegram -1001234567890   # its own alert chat
+ *   npm run org:setup -- --name "Burger King — Steven" --telegram-off              # back to the default group
  *
  * The flow agreed with the client on 30 Sep 2026: we create the organization and send the owner
  * one e-mail; the owner signs in through that link and adds their own people and restaurants.
@@ -46,6 +48,8 @@ const attach = all("attach");
 const attachUsers = all("attach-user").map((e) => e.toLowerCase());
 const resend = argv.includes("--resend");
 const printLink = argv.includes("--print-link");
+const telegramChat = flag("telegram");
+const telegramOff = argv.includes("--telegram-off");
 const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
 
 if (!name) {
@@ -153,11 +157,40 @@ if (ownerEmail) {
   }
 }
 
+// ---- 3b. where this customer's alerts go ----
+if (telegramChat || telegramOff) {
+  if (telegramChat && !/^-?\d{5,20}$/.test(telegramChat)) {
+    console.error(`  ✗ "${telegramChat}" не похоже на chat id. Найти его: npm run telegram -- --token <bot>`);
+    process.exit(1);
+  }
+  await prisma.organization.update({ where: { id: org.id }, data: { telegramChatId: telegramOff ? null : telegramChat } });
+  if (telegramOff) {
+    console.log(`\nалерты ${org.name} теперь идут в общую группу`);
+  } else {
+    console.log(`\nалерты ${org.name} теперь идут в чат ${telegramChat}`);
+    // Prove the bot is in that chat before anyone relies on it
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      const { sendTelegram } = await import("../src/lib/notify/telegram");
+      try {
+        await sendTelegram(`✅ Qimby: сюда будут приходить алерты по ресторанам «${org.name}».`, telegramChat);
+        console.log(`  проверочное сообщение ушло`);
+      } catch (err) {
+        console.error(`  ✗ не дошло: ${err instanceof Error ? err.message : err}\n  бот добавлен в эту группу? Пока не исправишь, алерты этого клиента не дойдут.`);
+        process.exit(1);
+      }
+    } else {
+      console.log(`  TELEGRAM_BOT_TOKEN не задан здесь — проверочное сообщение не отправлено`);
+    }
+  }
+}
+
 // ---- 4. what the organization looks like now ----
 const [members, locs] = await Promise.all([
   prisma.user.findMany({ where: { organizationId: org.id }, select: { email: true, role: true, status: true }, orderBy: { createdAt: "asc" } }),
   prisma.location.findMany({ where: { organizationId: org.id }, select: { name: true, deactivatedAt: true }, orderBy: { name: "asc" } }),
 ]);
+const current = await prisma.organization.findUniqueOrThrow({ where: { id: org.id }, select: { telegramChatId: true } });
+console.log(`\nАлерты: ${current.telegramChatId ? `свой чат ${current.telegramChatId}` : "общая группа (TELEGRAM_CHAT_ID)"}`);
 console.log(`\nВ организации сейчас:`);
 for (const m of members) console.log(`  ${m.email.padEnd(28)} ${m.role.padEnd(16)} ${m.status}`);
 if (!members.some((m) => m.role === "owner")) console.log(`  владельца нет — добавь --owner e-mail`);

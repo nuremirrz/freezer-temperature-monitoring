@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { notify, notificationHealth, formatAlertMessage } from "./index";
+import { chatFor } from "./index";
 
 /**
  * The contract that matters here is the return value: callers stamp `lastNotifiedAt` from it,
@@ -87,5 +88,21 @@ describe("formatAlertMessage", () => {
     expect(text).toContain("Walk-in Freezer");
     expect(text).toContain("17.7°F");
     expect(text).toContain("1 ч 5 мин");
+  });
+});
+
+describe("which chat an alert goes to", () => {
+  it("goes to the organization's own chat when it has one", () => {
+    expect(chatFor({ telegramChatId: "-1001111" })).toBe("-1001111");
+  });
+
+  it("goes to the default group when the organization has none — the state of every customer today", () => {
+    expect(chatFor({ telegramChatId: null })).toBeNull();
+    expect(chatFor({ telegramChatId: "  " })).toBeNull();
+  });
+
+  it("goes to the default group for a restaurant outside any organization", () => {
+    expect(chatFor(null)).toBeNull();
+    expect(chatFor(undefined)).toBeNull();
   });
 });

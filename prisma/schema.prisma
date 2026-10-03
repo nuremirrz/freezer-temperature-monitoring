@@ -53,6 +53,10 @@ enum UserStatus {
 model Organization {
   id        String   @id @default(cuid())
   name      String
+  /// Telegram chat that receives this customer's alerts. Null sends them to the default group
+  /// (TELEGRAM_CHAT_ID), which is also where Qimby's own system messages always go. One
+  /// customer's restaurants must never reach another customer's chat.
+  telegramChatId String?
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
   users     User[]

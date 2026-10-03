@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db";
 import { publish } from "@/lib/events";
-import { notify, locationUrl, type AlertNotification } from "@/lib/notify";
+import { notify, locationUrl, chatFor, type AlertNotification } from "@/lib/notify";
+
+/** A location with what notifications need from it: the organization's own chat. */
+const locationWithChat = { include: { organization: { select: { telegramChatId: true } } } } as const;
 import {
   evaluateTempReading,
   alertRange,
@@ -95,7 +98,7 @@ export interface NewReading {
 export async function processNewReading(reading: NewReading, now: Date = new Date()): Promise<void> {
   const unit = await prisma.unit.findUnique({
     where: { id: reading.unitId },
-    include: { location: true },
+    include: { location: locationWithChat },
   });
   if (!unit) return;
   // A deactivated restaurant keeps its readings and raises nothing: nobody is there to act.
@@ -166,6 +169,7 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
         rangeMaxF: unit.rangeMaxF,
         durationMin: minutesBetween(openedAt, now),
         url: locationUrl(unit.locationId),
+        chatId: chatFor(unit.location.organization),
       });
       return;
     }
@@ -223,6 +227,7 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
           rangeMaxF: unit.rangeMaxF,
           durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
           url: locationUrl(unit.locationId),
+          chatId: chatFor(unit.location.organization),
         });
       } else {
         console.log(`[alerts] resolved ${unit.name} @ ${unit.location.name} (notification suppressed by cooldown)`);
@@ -243,7 +248,7 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
   const sensor = await prisma.sensor.findUnique({
     where: { id: sensorId },
     include: {
-      location: true,
+      location: locationWithChat,
       channels: { where: { unitId: { not: null } }, include: { unit: true } },
     },
   });
@@ -300,6 +305,7 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
         locationWide: wholeLocationWasDown && siblings.length > 0,
         silentMin: minutesBetween(silentSince, now),
         url: locationUrl(sensor.locationId),
+        chatId: chatFor(sensor.location.organization),
       },
     );
   }
@@ -322,7 +328,7 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
     // A deactivated restaurant's sensors are expected to fall silent; that is not an outage.
     where: { location: { deactivatedAt: null } },
     include: {
-      location: true,
+      location: locationWithChat,
       channels: { where: { unitId: { not: null } }, include: { unit: true } },
     },
   });
@@ -402,6 +408,7 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
               ? minutesBetween(sensor.lastSeenAt, now)
               : Math.round(offlineAfterSec(sensor.expectedIntervalSec) / 60),
             url: locationUrl(sensor.locationId),
+            chatId: chatFor(sensor.location.organization),
           },
         );
       }

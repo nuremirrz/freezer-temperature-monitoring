@@ -14,6 +14,7 @@ import { listOrganization, createLocation, updateLocation } from "../src/lib/aut
 import type { Geocoder } from "../src/lib/geocode";
 import { updatePassport } from "../src/lib/units/passport";
 import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
+import { runOfflineCheck } from "../src/lib/alerts/service";
 
 /**
  * Runs the team and district services end to end against a throwaway database, through every
@@ -295,6 +296,29 @@ r = await listOrganization(S3.admin);
 check("две организации → admin называет, какую → 400", !r.ok && r.status === 400 && r.code === "organization_required");
 r = await listOrganization(S3.admin, org2.id);
 check("…с явной admin видит её таблицу", r.ok && r.data.locations.length === 1);
+
+console.log("\n=== алерты уходят в чат своей организации ===");
+// Two customers, one with its own chat. A silent sensor at each opens an offline alert; the
+// notifier here is the console one, which prints the chat it would have posted to.
+const chatOrg = await prisma.organization.create({ data: { name: "Chat Org", telegramChatId: "-1009990001" } });
+const mkSilent = async (orgId: string, name: string, eui: string) => {
+  const l = await prisma.location.create({ data: { name, address: "1", city: "X", state: "CA", zip: "90000", lat: 0, lng: 0, organizationId: orgId } });
+  const u = await prisma.unit.create({ data: { locationId: l.id, type: "walk_in_freezer", name: "WIF", rangeMinF: 0, rangeMaxF: 10 } });
+  const sn = await prisma.sensor.create({ data: { devEui: eui, locationId: l.id, lastSeenAt: new Date(Date.now() - 6 * 3600_000) } });
+  await prisma.sensorChannel.create({ data: { sensorId: sn.id, channel: 1, unitId: u.id } });
+};
+await mkSilent(chatOrg.id, "Chat Org Restaurant", "A8404100000000C1");
+await mkSilent(org.id, "Default Chat Restaurant", "A8404100000000C2");
+const said: string[] = [];
+const before = console.log;
+console.log = (...a: unknown[]) => { const line = String(a[0]); if (line.startsWith("[notify")) said.push(line); else before(...a); };
+await runOfflineCheck();
+await new Promise((res) => setTimeout(res, 300)); // notifications are fire-and-forget
+console.log = before;
+const toChatOrg = said.filter((l) => l.includes("Chat Org Restaurant"));
+const toDefault = said.filter((l) => l.includes("Default Chat Restaurant"));
+check("алерт ресторана со своим чатом ушёл в этот чат", toChatOrg.length > 0 && toChatOrg.every((l) => l.startsWith("[notify → -1009990001]")), said.join(" | "));
+check("алерт ресторана без своего чата ушёл в общую группу, а не в чужой чат", toDefault.length > 0 && toDefault.every((l) => l.startsWith("[notify] ")), said.join(" | "));
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);
 await prisma.$disconnect();

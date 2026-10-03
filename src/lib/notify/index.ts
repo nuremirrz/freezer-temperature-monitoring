@@ -14,6 +14,8 @@ export interface TempAlertNotification {
   durationMin: number;
   /** Deep link to the location screen, when APP_URL is configured */
   url?: string;
+  /** The organization's own chat; null or absent goes to the default group */
+  chatId?: string | null;
 }
 
 export interface OfflineNotification {
@@ -27,25 +29,37 @@ export interface OfflineNotification {
   silentMin: number;
   /** Deep link to the location screen, when APP_URL is configured */
   url?: string;
+  /** The organization's own chat; null or absent goes to the default group */
+  chatId?: string | null;
 }
 
 export type AlertNotification = TempAlertNotification | OfflineNotification;
 
 export interface Notifier {
-  send(text: string): Promise<void>;
+  /** No chat means the default group — Qimby's own, and every customer's without a chat of its own. */
+  send(text: string, chatId?: string | null): Promise<void>;
 }
 
 const consoleNotifier: Notifier = {
-  async send(text) {
-    console.log(`[notify] ${text}`);
+  async send(text, chatId) {
+    console.log(`[notify${chatId ? ` → ${chatId}` : ""}] ${text}`);
   },
 };
 
 const telegramNotifier: Notifier = {
-  async send(text) {
-    await sendTelegram(text);
+  async send(text, chatId) {
+    await sendTelegram(text, chatId);
   },
 };
+
+/**
+ * Where an alert about a restaurant goes: its organization's chat when it has one, otherwise
+ * the default group. Pure, so the rule that keeps customers apart can be tested on its own.
+ */
+export function chatFor(organization: { telegramChatId: string | null } | null | undefined): string | null {
+  const chat = organization?.telegramChatId?.trim();
+  return chat ? chat : null;
+}
 
 export function getNotifier(): Notifier {
   return telegramConfigured() ? telegramNotifier : consoleNotifier;
@@ -104,7 +118,7 @@ export function notificationHealth(): NotifyStatus {
 export async function notify(n: AlertNotification): Promise<boolean> {
   const text = formatAlertMessage(n);
   try {
-    await getNotifier().send(text);
+    await getNotifier().send(text, n.chatId);
     recordNotifyOk();
     return true;
   } catch (err) {

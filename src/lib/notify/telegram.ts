@@ -1,11 +1,12 @@
+/** The bot is set up. Which chat a message goes to is decided per message (see chatFor). */
 export function telegramConfigured(): boolean {
   return Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
 }
 
 /** Telegram Bot API sendMessage. Throws on HTTP/API errors so the caller can log and continue. */
-export async function sendTelegram(text: string): Promise<void> {
+export async function sendTelegram(text: string, chat?: string | null): Promise<void> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = chat || process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) throw new Error("Telegram is not configured");
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
