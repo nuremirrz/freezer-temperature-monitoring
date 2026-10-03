@@ -27,8 +27,52 @@ export function isHeic(file: { type: string; name: string }): boolean {
   return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
 }
 
-async function decode(file: Blob): Promise<ImageBitmap> {
-  return createImageBitmap(file, { imageOrientation: "from-image" });
+const HEIF_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"]);
+
+/**
+ * Pure: whether the first bytes are an HEIF container. Name and type lie — an iPhone photo can
+ * arrive as "image.jpg" with an empty type — the bytes do not: "ftyp" at offset 4, then a brand.
+ */
+export function looksLikeHeif(head: Uint8Array): boolean {
+  if (head.length < 12) return false;
+  const ascii = (a: number, b: number) => String.fromCharCode(...head.slice(a, b));
+  return ascii(4, 8) === "ftyp" && HEIF_BRANDS.has(ascii(8, 12).toLowerCase());
+}
+
+type Drawable = { source: CanvasImageSource; width: number; height: number; done: () => void };
+
+/**
+ * Turns a file into something a canvas can draw, trying the ways browsers differ on, in order:
+ *   1. createImageBitmap honouring the photo's rotation — modern Chrome and Firefox;
+ *   2. createImageBitmap without options — Safari rejects the option it does not know;
+ *   3. an <img> element — the oldest path and the one every browser has; it applies the
+ *      photo's rotation by itself.
+ */
+async function decode(file: Blob): Promise<Drawable> {
+  try {
+    const b = await createImageBitmap(file, { imageOrientation: "from-image" });
+    return { source: b, width: b.width, height: b.height, done: () => b.close() };
+  } catch {
+    // fall through
+  }
+  try {
+    const b = await createImageBitmap(file);
+    return { source: b, width: b.width, height: b.height, done: () => b.close() };
+  } catch {
+    // fall through
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    await img.decode();
+    if (!img.naturalWidth) throw new Error("empty image");
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight, done: () => URL.revokeObjectURL(url) };
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
+  }
 }
 
 export interface PreparedPhoto {
@@ -39,28 +83,39 @@ export interface PreparedPhoto {
 
 export async function preparePhoto(file: File): Promise<PreparedPhoto> {
   if (file.size > MAX_ORIGINAL_BYTES) throw new PhotoError("The photo is over 10 MB");
-  if (!file.type.startsWith("image/") && !isHeic(file)) throw new PhotoError("That is not a photo");
+  // A type that says "not an image" is believed; an empty one is not judged here — iOS and
+  // some file pickers leave it blank, and the decoder below finds out what the bytes are.
+  if (file.type && !file.type.startsWith("image/") && !isHeic(file)) throw new PhotoError("That is not a photo");
 
-  let bitmap: ImageBitmap;
+  let image: Drawable;
   try {
     // Safari decodes HEIC itself, and iOS usually converts it to JPEG on the way in anyway
-    bitmap = await decode(file);
-  } catch {
-    if (!isHeic(file)) throw new PhotoError("This photo could not be read");
-    // Chrome and Firefox cannot; the converter is loaded only for them, only when needed
-    const { default: heic2any } = await import("heic2any");
-    const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: JPEG_QUALITY });
-    bitmap = await decode(Array.isArray(converted) ? converted[0] : converted);
+    image = await decode(file);
+  } catch (first) {
+    const heif = isHeic(file) || looksLikeHeif(new Uint8Array(await file.slice(0, 12).arrayBuffer()));
+    if (!heif) {
+      console.warn("[photos] could not decode", { name: file.name, type: file.type, size: file.size }, first);
+      throw new PhotoError(`This photo could not be read (${file.type || "unknown type"}) — try a JPEG or PNG`);
+    }
+    // Chrome and Firefox cannot read HEIC; the converter is loaded only for them, only when needed
+    try {
+      const { default: heic2any } = await import("heic2any");
+      const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: JPEG_QUALITY });
+      image = await decode(Array.isArray(converted) ? converted[0] : converted);
+    } catch (second) {
+      console.warn("[photos] HEIC conversion failed", { name: file.name, type: file.type, size: file.size }, second);
+      throw new PhotoError("This HEIC photo could not be converted — try exporting it as JPEG");
+    }
   }
 
-  const size = fitWithin(bitmap.width, bitmap.height);
+  const size = fitWithin(image.width, image.height);
   const canvas = document.createElement("canvas");
   canvas.width = size.width;
   canvas.height = size.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new PhotoError("This browser cannot resize photos");
-  ctx.drawImage(bitmap, 0, 0, size.width, size.height);
-  bitmap.close();
+  ctx.drawImage(image.source, 0, 0, size.width, size.height);
+  image.done();
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
   if (!blob) throw new PhotoError("This photo could not be compressed");
   return { blob, ...size };
