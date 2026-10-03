@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -169,7 +170,10 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
           </div>
         )}
 
-        <TempChart unit={unit} timeZone={loc.timezone} />
+        {/* The chart reads its window from the address; Suspense is what that hook asks for */}
+        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl border border-line bg-panel sm:h-80" />}>
+          <TempChart key={unit.id} unit={unit} timeZone={loc.timezone} />
+        </Suspense>
 
         {/* Sensor health — real hardware telemetry, only when a sensor is mapped */}
         {sensor && (

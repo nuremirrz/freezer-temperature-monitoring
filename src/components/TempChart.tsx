@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -12,8 +14,14 @@ import {
   ReferenceLine,
   ReferenceArea,
 } from "recharts";
-import { api, CHART_RANGES, ChartRange, ReadingsResponse, UnitDetail } from "@/lib/api";
+import { api, CHART_RANGES, ChartRange, ReadingsQuery, ReadingsResponse, UnitDetail } from "@/lib/api";
 import { useLiveStore } from "@/store/useLiveStore";
+import { axisTicks, breakGaps, maxGapMs, tickLabel, windowLabel } from "@/lib/chart-axis";
+import { fromLocalInput, toLocalInput, tzAbbrev } from "@/lib/tz";
+import { PRESET_HOURS } from "@/lib/readings/window";
+
+// The calendar and its library arrive only when someone presses Custom
+const RangePicker = dynamic(() => import("./RangePicker"), { ssr: false });
 
 /* ------------------------------------------------------------------ */
 /* Palette — from globals.css, so the chart matches the rest of the app */
@@ -135,29 +143,53 @@ function ticksFor([lo, hi]: [number, number], step = 10): number[] {
   return out;
 }
 
-/** Whole hours on the x-axis: two-hourly for cold storage, hourly for an AC. */
-function xTicks(from: number, to: number, everyHours: number): number[] {
-  const ms = everyHours * 3_600_000;
-  const out: number[] = [];
-  for (let t = Math.ceil(from / ms) * ms; t <= to; t += ms) out.push(t);
-  return out;
+/* ------------------------------------------------------------------ */
+/* The window: which stretch of time is shown                          */
+/* ------------------------------------------------------------------ */
+
+type Window = { range: ChartRange } | { range: "custom"; from: number; to: number };
+
+const DEFAULT_RANGE: ChartRange = "1d";
+
+/**
+ * The address carries the window — `?range=1w`, or `?from=2026-09-25T14:00&to=…` on the
+ * restaurant's clock — so a chart can be sent to someone as a link, and reloading keeps it.
+ */
+function windowFromUrl(q: URLSearchParams, tz: string): Window {
+  const from = fromLocalInput(q.get("from") ?? "", tz);
+  const to = fromLocalInput(q.get("to") ?? "", tz);
+  if (from !== null && to !== null && to > from) return { range: "custom", from, to };
+  const range = q.get("range");
+  return { range: range && range in PRESET_HOURS ? (range as ChartRange) : DEFAULT_RANGE };
 }
 
-function fmtTick(range: ChartRange, t: number, timeZone: string): string {
-  const d = new Date(t);
-  if (range === "12h" || range === "1d") {
-    // Whole hours only — "9 AM" rather than "9:00 AM", so twice as many labels fit
-    return d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", hour12: true });
+function writeWindowToUrl(w: Window, tz: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("range");
+  url.searchParams.delete("from");
+  url.searchParams.delete("to");
+  if (w.range === "custom") {
+    url.searchParams.set("from", toLocalInput(w.from, tz));
+    url.searchParams.set("to", toLocalInput(w.to, tz));
+  } else if (w.range !== DEFAULT_RANGE) {
+    url.searchParams.set("range", w.range);
   }
-  return d.toLocaleDateString("en-US", { timeZone, month: "short", day: "numeric" });
+  window.history.replaceState(null, "", url);
 }
+
+const queryFor = (w: Window): ReadingsQuery =>
+  w.range === "custom" ? { from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString() } : { range: w.range };
 
 type Series = "both" | "room" | "duct";
 
 /* ------------------------------------------------------------------ */
 
 export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZone: string }) {
-  const [range, setRange] = useState<ChartRange>("1d");
+  // The address is the one source of truth for the window; choosing one rewrites the address
+  const params = useSearchParams();
+  const win = useMemo(() => windowFromUrl(params, timeZone), [params, timeZone]);
+  // The instant the picker was opened, or null while it is closed
+  const [picking, setPicking] = useState<number | null>(null);
   const [series, setSeries] = useState<Series>("both");
   const [state, setState] = useState<{
     data: ReadingsResponse | null;
@@ -165,12 +197,22 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     loading: boolean;
   }>({ data: null, error: null, loading: true });
   const readingTick = useLiveStore((s) => s.readingTick);
+  // A chosen period is fixed: a new uplink cannot land inside it, so it never refetches
+  const liveTick = win.range !== "custom" ? readingTick : 0;
+
+  const choose = useCallback(
+    (w: Window) => {
+      setPicking(null);
+      writeWindowToUrl(w, timeZone);
+    },
+    [timeZone],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     // One state write per outcome keeps this a subscription, not a render cascade
     api
-      .readings(unit.id, range, controller.signal)
+      .readings(unit.id, queryFor(win), controller.signal)
       .then((res) => setState({ data: res, error: null, loading: false }))
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -181,27 +223,32 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
         });
       });
     return () => controller.abort();
-    // readingTick pulls fresh points in when a new uplink lands
-  }, [unit.id, range, readingTick]);
+    // liveTick pulls fresh points in when a new uplink lands — for a window that ends now
+  }, [unit.id, win, liveTick]);
 
   const { data, error, loading } = state;
   const isAC = unit.type === "ac";
 
-  const points = useMemo(
-    () =>
-      (data?.points ?? []).map((p) => ({
-        t: new Date(p.t).getTime(),
-        tempF: p.tempF,
-        probeTempF: p.probeTempF ?? null,
-      })),
-    [data],
-  );
+  const bucketed = !!data?.bucketMinutes;
+  const points = useMemo(() => {
+    if (!data) return [];
+    const raw = data.points.map((p) => ({
+      t: new Date(p.t).getTime(),
+      tempF: p.tempF,
+      probeTempF: p.probeTempF ?? null,
+      // The spread inside an averaged bucket, drawn as a band behind the line
+      band: p.min !== undefined && p.max !== undefined ? [p.min, p.max] : null,
+    }));
+    return breakGaps(raw, maxGapMs(data.bucketMinutes, data.intervalSec));
+  }, [data]);
+  const hasPoints = data ? data.points.length > 0 : false;
 
   const { zones, thresholds } = useMemo(() => bandsFor(unit), [unit]);
 
   const chart = useMemo(() => {
-    const rooms = points.map((p) => p.tempF);
-    const ducts = points.map((p) => p.probeTempF).filter((v): v is number => v !== null);
+    const real = points.filter((p): p is Exclude<typeof p, { gap: true }> => !("gap" in p));
+    const rooms = real.flatMap((p) => p.band ?? [p.tempF]);
+    const ducts = real.map((p) => p.probeTempF).filter((v): v is number => v !== null);
 
     if (isAC) {
       // The client's rule: a little air below the duct, a little more above the room — on whole
@@ -216,10 +263,12 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     return { domain: yDomain(base, rooms) };
   }, [points, isAC, unit.type]);
 
-  const xFrom = points.length ? points[0].t : 0;
-  const xTo = points.length ? points[points.length - 1].t : 0;
-  const hourly = range === "12h" || range === "1d";
-  const tickHours = isAC ? 1 : 2;
+  // The axis spans the window asked for, not the points found: an outage at the end shows as
+  // empty space, which is the truth of it
+  const xFrom = data ? new Date(data.from).getTime() : 0;
+  const xTo = data ? new Date(data.to).getTime() : 0;
+  const ticks = useMemo(() => (data ? axisTicks(xFrom, xTo, timeZone, isAC) : null), [data, xFrom, xTo, timeZone, isAC]);
+  const custom = win.range === "custom" ? win : null;
 
   const showRoom = !isAC || series !== "duct";
   const showDuct = isAC && series !== "room";
@@ -236,19 +285,45 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                 : `${data.bucketMinutes}-min averages`}
             </span>
           ) : null}
+          {custom && (
+            <div className="text-xs font-normal text-muted">
+              {windowLabel(custom.from, custom.to, timeZone)}
+              <span className="text-faint"> · {tzAbbrev(custom.to, timeZone)}</span>
+            </div>
+          )}
         </div>
-        <div className="flex overflow-hidden rounded-lg border border-line text-xs font-medium">
-          {CHART_RANGES.map((r) => (
+        <div className="relative">
+          <div className="flex overflow-hidden rounded-lg border border-line text-xs font-medium">
+            {CHART_RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => choose({ range: r.key })}
+                className={`px-3 py-1.5 transition-colors ${
+                  win.range === r.key ? "bg-primary text-white" : "bg-panel text-muted hover:text-ink"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
             <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
+              onClick={() => setPicking((v) => (v === null ? Date.now() : null))}
+              aria-expanded={picking !== null}
               className={`px-3 py-1.5 transition-colors ${
-                r.key === range ? "bg-primary text-white" : "bg-panel text-muted hover:text-ink"
+                custom ? "bg-primary text-white" : "bg-panel text-muted hover:text-ink"
               }`}
             >
-              {r.label}
+              Custom
             </button>
-          ))}
+          </div>
+          {picking !== null && (
+            <RangePicker
+              timeZone={timeZone}
+              now={picking}
+              initial={custom ? { from: custom.from, to: custom.to } : undefined}
+              onApply={(from, to) => choose({ range: "custom", from, to })}
+              onClose={() => setPicking(null)}
+            />
+          )}
         </div>
       </div>
 
@@ -259,14 +334,16 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
           <div className="flex h-full items-center justify-center text-sm text-alert">{error}</div>
         )}
 
-        {!loading && !error && points.length === 0 && (
+        {!loading && !error && data && !hasPoints && (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
             <div className="text-sm text-muted">No readings in this period</div>
-            <div className="text-xs text-faint">The chart fills in as uplinks arrive</div>
+            <div className="text-xs text-faint">
+              {custom ? "Nothing was recorded between these times" : "The chart fills in as uplinks arrive"}
+            </div>
           </div>
         )}
 
-        {points.length > 0 && (
+        {hasPoints && (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={points} margin={{ top: 10, right: 14, bottom: 0, left: -14 }}>
               <defs>
@@ -303,9 +380,10 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
               <XAxis
                 dataKey="t"
                 type="number"
-                domain={["dataMin", "dataMax"]}
-                ticks={hourly ? xTicks(xFrom, xTo, tickHours) : undefined}
-                tickFormatter={(t) => fmtTick(range, t as number, timeZone)}
+                domain={[xFrom, xTo]}
+                allowDataOverflow
+                ticks={ticks?.values}
+                tickFormatter={(t) => (ticks ? tickLabel(ticks.mode, t as number, timeZone) : "")}
                 tick={{ fontSize: 11, fill: C.axis }}
                 axisLine={{ stroke: C.grid }}
                 tickLine={false}
@@ -330,10 +408,14 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                     minute: "2-digit",
                   })
                 }
-                formatter={(v, name) => [
-                  `${v}°F`,
-                  name === "probeTempF" ? "From the duct" : isAC ? "In the room" : "Temperature",
-                ]}
+                formatter={(v, name) => {
+                  if (name === "band") {
+                    const [lo, hi] = v as [number, number];
+                    return [`${lo}°F – ${hi}°F`, "Low – high"];
+                  }
+                  const what = name === "probeTempF" ? "From the duct" : isAC ? "In the room" : "Temperature";
+                  return [`${v}°F`, bucketed ? `${what} (average)` : what];
+                }}
                 contentStyle={{
                   borderRadius: 10,
                   border: "1px solid #e4e7ec",
@@ -391,6 +473,19 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                 />
               )}
 
+              {/* The spread inside each bucket — how far the unit wandered, not only where it sat */}
+              {bucketed && showRoom && (
+                <Area
+                  type="monotone"
+                  dataKey="band"
+                  stroke="none"
+                  fill={isAC ? C.room : C.alert}
+                  fillOpacity={0.12}
+                  dot={false}
+                  activeDot={false}
+                  isAnimationActive={false}
+                />
+              )}
               {showDuct && (
                 <Area
                   type="monotone"
@@ -399,7 +494,6 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   strokeWidth={1.25}
                   fill="url(#fillDuct)"
                   dot={false}
-                  connectNulls
                   isAnimationActive={false}
                 />
               )}
@@ -420,7 +514,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
       </div>
 
       {/* One control, not three loose buttons — the client asked for them joined up */}
-      {isAC && points.length > 0 && (
+      {isAC && hasPoints && (
         <div className="mt-3 flex overflow-hidden rounded-lg border border-line text-xs font-medium">
           {(
             [

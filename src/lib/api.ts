@@ -146,11 +146,23 @@ export interface ReadingPoint {
   n?: number;
 }
 
+/** A preset that ends now, or two chosen instants (ISO, UTC) a year apart at most */
+export type ReadingsQuery = { range: ChartRange } | { from: string; to: string };
+
 export interface ReadingsResponse {
   unitId: string;
   type: UnitType;
-  range: ChartRange;
+  range: ChartRange | "custom";
+  /** The window actually served, as instants; a custom one is cut at now */
+  from: string;
+  to: string;
+  /** True for a preset: it ends now and should pick up new readings as they arrive */
+  live: boolean;
   bucketMinutes: number | null;
+  /** The restaurant's zone — what the axis and the picker speak */
+  timeZone: string;
+  /** How often the sensor is expected to report, for breaking the line at an outage */
+  intervalSec: number;
   rangeMinF: number;
   rangeMaxF: number;
   alertMinF: number | null;
@@ -211,8 +223,8 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 export const api = {
   locations: (signal?: AbortSignal) => get<LocationsResponse>("/api/locations", signal),
   location: (id: string, signal?: AbortSignal) => get<LocationDetail>(`/api/locations/${id}`, signal),
-  readings: (unitId: string, range: ChartRange, signal?: AbortSignal) =>
-    get<ReadingsResponse>(`/api/units/${unitId}/readings?range=${range}`, signal),
+  readings: (unitId: string, q: ReadingsQuery, signal?: AbortSignal) =>
+    get<ReadingsResponse>(`/api/units/${unitId}/readings?${new URLSearchParams(q).toString()}`, signal),
   updateUnit: (unitId: string, body: UnitPatch) =>
     patch<{ rangeMinF: number; rangeMaxF: number; refrigerant: string | null; year: number | null }>(
       `/api/units/${unitId}`,

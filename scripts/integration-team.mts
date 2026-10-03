@@ -14,6 +14,9 @@ import { listOrganization, createLocation, updateLocation } from "../src/lib/aut
 import type { Geocoder } from "../src/lib/geocode";
 import { updatePassport } from "../src/lib/units/passport";
 import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
+import { resolveWindow } from "../src/lib/readings/window";
+import { readingSeries } from "../src/lib/readings/series";
+import { zonedParts } from "../src/lib/tz";
 import { runOfflineCheck } from "../src/lib/alerts/service";
 import { addPhoto, deletePhoto, photoContent, listPhotos } from "../src/lib/units/photos";
 import { localStorage as localPhotoStorage, type ObjectStorage } from "../src/lib/storage";
@@ -307,11 +310,43 @@ check("сломанный счётчик — ошибка, а не тишина"
 check("ошибка записи видна в счётчике для health", writeErrorStatus().failures >= 1);
 await prisma.$executeRawUnsafe(`SELECT setval('"Reading_id_seq"', (SELECT max(id) FROM "Reading"), true)`);
 
+console.log("\n=== график: окно и корзины по часам ресторана ===");
+// A restaurant in Los Angeles with a unit that reported every hour for three days around the
+// night the clocks went forward (8 Mar 2026, 2 AM → 3 AM). Buckets must be cut on its own clock.
+const laLoc = await prisma.location.create({ data: { name: "LA", address: "1", city: "LA", state: "CA", zip: "90001", lat: 34, lng: -118, organizationId: org.id, timezone: "America/Los_Angeles" } });
+const laUnit = await prisma.unit.create({ data: { locationId: laLoc.id, type: "freezer", name: "F-LA", rangeMinF: -10, rangeMaxF: 10 } });
+const laSensor = await prisma.sensor.create({ data: { devEui: "A8404100000000AA", locationId: laLoc.id } });
+const marchStart = Date.UTC(2026, 2, 7, 8); // 7 Mar, midnight PST
+await insertReadings(prisma, Array.from({ length: 72 }, (_, i) => ({ unitId: laUnit.id, sensorId: laSensor.id, channel: 1, tempF: i % 10, probeTempF: null, measuredAt: new Date(marchStart + i * 3_600_000) })));
+const LA = "America/Los_Angeles";
+const localHM = (iso: string) => { const p = zonedParts(Date.parse(iso), LA); return [p.h, p.mi] as const; };
+
+let wr = resolveWindow({ from: "2026-01-01T08:00:00Z", to: "2026-10-01T07:00:00Z" }, Date.UTC(2026, 9, 3, 17));
+check("девять месяцев → корзины по 12 часов", wr.ok && wr.window.bucketMinutes === 720, JSON.stringify(wr));
+let series = wr.ok ? await readingSeries(prisma, laUnit.id, wr.window, LA) : [];
+// 72 hours from midnight 7 Mar, one of the days 23 hours long, reach midnight on the 10th: seven buckets
+check("все корзины начинаются в местную полночь или полдень", series.length === 7 && series.every((pt) => { const [h, m] = localHM(pt.t); return (h === 0 || h === 12) && m === 0; }), series.map((pt) => pt.t).join(","));
+check("ни одно показание не потеряно при усреднении", series.reduce((a, pt) => a + (pt.n ?? 0), 0) === 72);
+const shortNight = series.find((pt) => pt.t === "2026-03-08T08:00:00.000Z");
+check("корзина ночи перевода часов короче: 11 показаний, не 12", shortNight?.n === 11, `n=${shortNight?.n}`);
+check("после перевода полдень — уже 19:00 UTC, и корзина там есть", series.some((pt) => pt.t === "2026-03-08T19:00:00.000Z"));
+check("в корзине есть min и max", series.every((pt) => pt.min !== undefined && pt.max !== undefined && pt.min <= pt.tempF && pt.tempF <= pt.max));
+
+wr = resolveWindow({ from: "2026-03-08T08:00:00Z", to: "2026-03-09T08:00:00Z" }, Date.UTC(2026, 9, 3, 17));
+series = wr.ok ? await readingSeries(prisma, laUnit.id, wr.window, LA) : [];
+check("сутки → сырые показания, включая оба края", wr.ok && wr.window.bucketMinutes === null && series.length === 25, `${series.length}`);
+check("показания в сыром виде без min/max", series.every((pt) => pt.min === undefined));
+
+wr = resolveWindow({ range: "1w" }, Date.now());
+series = wr.ok ? await readingSeries(prisma, laUnit.id, wr.window, LA) : [];
+check("пресет за неделю: мартовских показаний в нём нет", wr.ok && wr.window.live && series.length === 0);
+check("период длиннее года отклоняется", !resolveWindow({ from: "2025-01-01T00:00:00Z", to: "2026-03-01T00:00:00Z" }).ok);
+
 console.log("\n=== admin при единственной организации ===");
 const dev = await prisma.user.findUniqueOrThrow({ where: { email: "dev@t.io" } });
 const S3 = { admin: await session(dev) };
 r = await listDistricts(S3.admin);
-check("admin без явной организации попадает в единственную", r.ok && r.data.unassigned.length === 4, r.ok ? "" : `${r.code}`); // 3 seeded + the reopened Loc 4
+check("admin без явной организации попадает в единственную", r.ok && r.data.unassigned.length === 5, r.ok ? "" : `${r.code}`); // 3 seeded + the reopened Loc 4 + the LA one from the chart scenarios
 r = await createDistrict(S3.admin, { name: "By admin" });
 check("admin создаёт дистрикт в единственной организации", r.ok && r.data.name === "By admin");
 r = await inviteUser(S3.admin, { email: "byadmin@t.io", role: "technician", locationIds: [L1.id] }, BASE);

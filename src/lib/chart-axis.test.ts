@@ -1,0 +1,77 @@
+import { describe, it, expect } from "vitest";
+import { axisTicks, tickLabel, windowLabel, breakGaps, maxGapMs } from "./chart-axis";
+import { zonedParts } from "./tz";
+
+const LA = "America/Los_Angeles";
+const utc = (y: number, m: number, d: number, h = 0, mi = 0) => Date.UTC(y, m - 1, d, h, mi);
+const H = 3_600_000;
+const D = 24 * H;
+
+describe("ticks on the restaurant's clock", () => {
+  it("puts a day's ticks on local whole hours, labelled as the clock on the wall reads", () => {
+    // 25 Sep 2 PM to 26 Sep 2 PM Pacific
+    const from = utc(2026, 9, 25, 21), to = utc(2026, 9, 26, 21);
+    const { mode, values } = axisTicks(from, to, LA);
+    expect(mode).toBe("hour");
+    expect(values.map((t) => zonedParts(t, LA).h)).toEqual([15, 18, 21, 0, 3, 6, 9, 12]);
+    expect(tickLabel(mode, values[3], LA)).toBe("12 AM");
+  });
+
+  it("gives an AC chart more ticks than a freezer's", () => {
+    const from = utc(2026, 9, 25, 21), to = from + 12 * H;
+    expect(axisTicks(from, to, LA, true).values).toHaveLength(13);
+    expect(axisTicks(from, to, LA, false).values).toHaveLength(7);
+  });
+
+  it("stays on local hours across the clocks going back", () => {
+    // 31 Oct 8 PM to 1 Nov 8 PM Pacific: 25 hours long
+    const from = utc(2026, 11, 1, 3), to = utc(2026, 11, 2, 4);
+    const parts = axisTicks(from, to, LA).values.map((t) => zonedParts(t, LA));
+    const hours = parts.map((p) => p.h);
+    expect(parts.every((p) => p.mi === 0 && p.h % 4 === 0)).toBe(true);
+    expect(hours).toContain(0);
+  });
+
+  it("puts a month's ticks on local midnight every third day", () => {
+    const from = utc(2026, 9, 3, 17), to = from + 30 * D;
+    const { mode, values } = axisTicks(from, to, LA);
+    expect(mode).toBe("day");
+    expect(values.every((t) => zonedParts(t, LA).h === 0 && zonedParts(t, LA).mi === 0)).toBe(true);
+    expect(values.length).toBe(10);
+    expect(tickLabel(mode, values[0], LA)).toBe("Sep 4");
+  });
+
+  it("puts a year's ticks on the first of each month, with the year on January", () => {
+    const from = utc(2025, 10, 3, 17), to = utc(2026, 10, 3, 17);
+    const { mode, values } = axisTicks(from, to, LA);
+    expect(mode).toBe("month");
+    expect(values).toHaveLength(12);
+    expect(values.every((t) => zonedParts(t, LA).d === 1)).toBe(true);
+    expect(tickLabel(mode, values[0], LA)).toBe("Nov");
+    expect(tickLabel(mode, values[2], LA)).toBe("Jan 2026");
+  });
+});
+
+describe("the heading for a window", () => {
+  it("drops the second date when both ends fall on one day", () => {
+    expect(windowLabel(utc(2026, 9, 25, 21), utc(2026, 9, 26, 2), LA)).toBe("Sep 25, 2:00 PM – 7:00 PM");
+  });
+  it("names both days otherwise, and the years only when they differ", () => {
+    expect(windowLabel(utc(2026, 9, 25, 21), utc(2026, 9, 26, 21), LA)).toBe("Sep 25, 2:00 PM – Sep 26, 2:00 PM");
+    expect(windowLabel(utc(2025, 12, 31, 20), utc(2026, 1, 1, 20), LA)).toBe("Dec 31, 2025, 12:00 PM – Jan 1, 2026, 12:00 PM");
+  });
+});
+
+describe("gaps in the line", () => {
+  it("breaks the line where readings stopped for three intervals, and nowhere else", () => {
+    const pts = [0, 5, 10, 40, 45].map((m) => ({ t: m * 60_000, v: 1 }));
+    const out = breakGaps(pts, maxGapMs(null, 300));
+    expect(out).toHaveLength(6);
+    expect(out[3]).toEqual({ t: 10 * 60_000 + 1, gap: true });
+  });
+  it("breaks an averaged line at an empty bucket", () => {
+    expect(maxGapMs(30, 300)).toBe(60 * 60_000);
+    expect(breakGaps([{ t: 0 }, { t: 30 * 60_000 }, { t: 90 * 60_000 }], maxGapMs(30, 300))).toHaveLength(3);
+    expect(breakGaps([{ t: 0 }, { t: 30 * 60_000 }, { t: 100 * 60_000 }], maxGapMs(30, 300))).toHaveLength(4);
+  });
+});

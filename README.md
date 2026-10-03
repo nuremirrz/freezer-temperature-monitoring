@@ -41,7 +41,7 @@ everything.
 | Sign in, forgot / reset password | `/login`, `/forgot-password`, `/reset-password` | everyone |
 | Locations | `/locations` | status per restaurant, Alerts / Offline / Normal counts, map; filtered to what the account may see |
 | Location | `/locations/[id]` | units table with live temperature, status, normal range and alert duration; outdoor weather |
-| Unit | `/locations/[id]/units/[unitId]` | current state, editable normal range, 24 h / 7 d / 30 d chart with the normal band, the unit passport with an edit popup |
+| Unit | `/locations/[id]/units/[unitId]` | current state, editable normal range, a chart for the last 12 h / day / week / month or any period up to a year (a calendar in the restaurant's own time; the address carries the choice), the unit passport with an edit popup |
 | Team | `/team` | owner and district managers: invite, change role and scope, deactivate, resend or revoke invitations |
 | Restaurants & people | `/organization` | owner: one row per restaurant with its manager and technicians; add, rename, re-address, close and reopen restaurants |
 
@@ -197,7 +197,7 @@ days without a send.
 | --- | --- |
 | `GET /api/locations` | visible locations with derived `status`, per-status unit counts and a `summary` |
 | `GET /api/locations/[id]` | location, gateways, units with `lastReading`, `status`, `activeAlert`, sensor battery and rssi |
-| `GET /api/units/[id]/readings?range=24h\|7d\|30d` | chart series; 7d and 30d are averaged in SQL |
+| `GET /api/units/[id]/readings?range=12h\|1d\|1w\|1m` or `?from=<ISO>&to=<ISO>` | chart series; up to two days raw, longer windows averaged in SQL into buckets cut on the restaurant's clock (`src/lib/readings/window.ts`); a year at most |
 | `POST /api/locations`, `PATCH /api/locations/[id]` | add a restaurant; rename, re-address, close or reopen it, set its manager and technicians |
 | `GET /api/organization` | the owner's table: every restaurant, closed ones included, with who is on it |
 | `PATCH /api/units/[id]` | normal, alert and duct bands; owners and managers |
