@@ -15,7 +15,8 @@ import type { Geocoder } from "../src/lib/geocode";
 import { updatePassport } from "../src/lib/units/passport";
 import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
 import { resolveWindow } from "../src/lib/readings/window";
-import { readingSeries } from "../src/lib/readings/series";
+import { readingSeries, weatherSeries } from "../src/lib/readings/series";
+import { insertWeather, sampleWeather, backfillWeather } from "../src/lib/weather/store";
 import { zonedParts } from "../src/lib/tz";
 import { runOfflineCheck } from "../src/lib/alerts/service";
 import { addPhoto, deletePhoto, photoContent, listPhotos } from "../src/lib/units/photos";
@@ -70,6 +71,7 @@ await prisma.userDistrict.deleteMany();
 await prisma.locationAccess.deleteMany();
 await prisma.user.deleteMany();
 await prisma.district.deleteMany();
+await prisma.weatherReading.deleteMany();
 await prisma.location.deleteMany();
 await prisma.organization.deleteMany();
 }
@@ -341,6 +343,49 @@ wr = resolveWindow({ range: "1w" }, Date.now());
 series = wr.ok ? await readingSeries(prisma, laUnit.id, wr.window, LA) : [];
 check("пресет за неделю: мартовских показаний в нём нет", wr.ok && wr.window.live && series.length === 0);
 check("период длиннее года отклоняется", !resolveWindow({ from: "2025-01-01T00:00:00Z", to: "2026-03-01T00:00:00Z" }).ok);
+
+console.log("\n=== погода: воздух снаружи для графика AC ===");
+// Open-Meteo stands in for itself: a fetcher that answers with a fixed sample and counts calls
+let weatherCalls = 0;
+const fakeMeteo = (async (url: string) => {
+  weatherCalls++;
+  const u = new URL(url);
+  if (u.searchParams.has("hourly")) {
+    // The hours asked for: from `past_days` ago (forecast) or `start_date` (archive), to now
+    const start = u.searchParams.has("past_days")
+      ? Date.now() - Number(u.searchParams.get("past_days")) * 86_400_000
+      : Date.parse(u.searchParams.get("start_date")!);
+    const time: number[] = [];
+    for (let t = Math.ceil(start / 3_600_000) * 3_600_000; t <= Date.now(); t += 3_600_000) time.push(t / 1000);
+    return new Response(JSON.stringify({ hourly: { time, temperature_2m: time.map((_, i) => 50 + (i % 20)), weather_code: time.map(() => 1) } }));
+  }
+  return new Response(JSON.stringify({ current: { time: 1_790_000_000, temperature_2m: 66.5, weather_code: 3 } }));
+}) as unknown as typeof fetch;
+let ws = await sampleWeather(prisma, Date.now(), fakeMeteo);
+check("проба раз в четверть часа: по одной на открытый ресторан", ws !== null && ws.sampled >= 5 && ws.stored === ws.sampled, JSON.stringify(ws));
+const callsAfterFirst = weatherCalls;
+ws = await sampleWeather(prisma, Date.now(), fakeMeteo);
+check("минуту спустя — ничего не запрашивается", ws === null && weatherCalls === callsAfterFirst);
+ws = await sampleWeather(prisma, Date.now() + 16 * 60_000, fakeMeteo);
+check("тот же штамп Open-Meteo второй раз — строки не прибавилось, ошибки нет", ws !== null && ws.stored === 0 && ws.sampled >= 5, JSON.stringify(ws));
+const closedLoc = await prisma.location.create({ data: { name: "Closed", address: "1", city: "X", state: "NJ", zip: "07601", lat: 0, lng: 0, organizationId: org.id, deactivatedAt: new Date() } });
+ws = await sampleWeather(prisma, Date.now() + 32 * 60_000, fakeMeteo);
+check("закрытый ресторан не опрашивается", ws !== null && (await prisma.weatherReading.count({ where: { locationId: closedLoc.id } })) === 0);
+const twoDaysAgo = Date.now() - 86_400_000 * 2;
+const bf = await backfillWeather(prisma, twoDaysAgo, fakeMeteo);
+const laRow = bf.find((r) => r.name === "LA");
+check("бэкфилл: двое суток по часам получены и записаны для LA", laRow !== undefined && laRow.fetched >= 47 && laRow.fetched <= 49 && laRow.stored === laRow.fetched, JSON.stringify(laRow));
+check("повторный бэкфилл ничего не дублирует", (await backfillWeather(prisma, twoDaysAgo, fakeMeteo)).every((r) => r.stored === 0));
+
+wr = resolveWindow({ from: new Date(twoDaysAgo).toISOString(), to: new Date().toISOString() });
+let wsr = wr.ok ? await weatherSeries(prisma, laLoc.id, wr.window, LA) : [];
+// One hour either way: the window's edges and the fake's first hour are rounded differently
+check("двое суток → погода по часам, как записана", wsr.length >= 47 && wsr.length <= 49 && wsr.every((pt) => pt.tempF >= 50 && pt.tempF < 70), `${wsr.length}`);
+wr = resolveWindow({ from: "2026-01-01T08:00:00Z", to: new Date().toISOString() });
+wsr = wr.ok ? await weatherSeries(prisma, laLoc.id, wr.window, LA) : [];
+check("длинное окно → погода в тех же корзинах, что показания (местная полночь/полдень)", wsr.length >= 4 && wsr.length <= 6 && wsr.every((pt) => { const [h, m] = localHM(pt.t); return (h === 0 || h === 12) && m === 0; }), wsr.map((pt) => pt.t).join(","));
+const firstStamp = await prisma.weatherReading.findFirstOrThrow({ where: { locationId: laLoc.id }, orderBy: { measuredAt: "asc" } });
+check("ручная запись погоды — дубль по штампу молча", (await insertWeather(prisma, laLoc.id, [{ at: firstStamp.measuredAt.getTime(), tempF: 1, code: null }])) === 0);
 
 console.log("\n=== admin при единственной организации ===");
 const dev = await prisma.user.findUniqueOrThrow({ where: { email: "dev@t.io" } });

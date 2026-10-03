@@ -163,6 +163,8 @@ export interface ReadingsResponse {
   timeZone: string;
   /** How often the sensor is expected to report, for breaking the line at an outage */
   intervalSec: number;
+  /** The air outside the restaurant over the same window — AC units only */
+  weather?: { t: string; tempF: number }[];
   rangeMinF: number;
   rangeMaxF: number;
   alertMinF: number | null;

@@ -44,6 +44,9 @@ export const BACKUP_MODELS: BackupModel[] = [
   { name: "UnitChange", delegate: "unitChange", cursor: "id" },
   // The rows only: the photos themselves live in object storage, not in the database.
   { name: "UnitPhoto", delegate: "unitPhoto", cursor: "id" },
+  // Cheap to lose and cheap to refetch (npm run weather:backfill), but a restore should not
+  // have to know that.
+  { name: "WeatherReading", delegate: "weatherReading", cursor: "id" },
 ];
 
 export interface BackupMeta {

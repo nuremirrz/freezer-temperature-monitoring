@@ -6,6 +6,7 @@ import { currentFreshness, READINGS_STALLED_AFTER_MIN } from "@/lib/alerts/fresh
 import { unreadFieldsSeen } from "@/lib/ttn/unread";
 import { writeErrorStatus } from "@/lib/readings/write";
 import { getStorage } from "@/lib/storage";
+import { weatherStatus } from "@/lib/weather/store";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,8 @@ export async function GET() {
       // nobody can finish signing up or recover a password until a provider is configured.
       // A non-zero `failures` means one is configured and rejecting us.
       mail: mailStatus(),
+      // Outdoor temperature samples for the AC charts: when one last succeeded, how many failed
+      weather: weatherStatus(),
       time: now.toISOString(),
     });
   } catch (err) {

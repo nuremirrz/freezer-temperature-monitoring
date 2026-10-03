@@ -197,9 +197,25 @@ model Location {
   units        Unit[]
   sensors      Sensor[]
   access       LocationAccess[]
+  weather      WeatherReading[]
 
   @@index([organizationId])
   @@index([districtId])
+}
+
+/// The air outside a restaurant, from Open-Meteo, so an AC chart can show what the unit was
+/// up against. Sampled every quarter hour by the minute loop and backfilled by the hour
+/// (`npm run weather:backfill`); Open-Meteo's own timestamps, so a sample seen twice is one row.
+model WeatherReading {
+  id         Int      @id @default(autoincrement())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  tempF      Float
+  /// WMO weather code, for the card's icon
+  code       Int?
+  measuredAt DateTime @db.Timestamptz(6)
+
+  @@unique([locationId, measuredAt])
 }
 
 model Gateway {

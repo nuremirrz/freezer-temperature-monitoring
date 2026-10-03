@@ -31,6 +31,7 @@
     "recover:ttn": "tsx scripts/recover-from-ttn.mts",
     "test:accounts": "tsx scripts/seed-test-accounts.mts",
     "chart:check": "tsx scripts/chart-check.mts",
+    "weather:backfill": "tsx scripts/backfill-weather.mts",
     "db:sequences": "tsx scripts/db-sequences.mts",
     "sensors:unknown": "tsx scripts/unknown-devices.mts",
     "db:usage": "tsx scripts/db-usage.mts",

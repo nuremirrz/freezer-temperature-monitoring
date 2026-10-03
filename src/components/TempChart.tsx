@@ -40,6 +40,8 @@ const C = {
   melt: "#667085",
   room: "#e5484d",
   duct: "#2970ff",
+  /** The air outside: yellow, as the client asked, so it is never taken for a reading of ours */
+  outside: "#eab308",
 } as const;
 
 /** Background wash for a zone — enough to read the band at a glance, not enough to fight the line. */
@@ -180,7 +182,12 @@ function writeWindowToUrl(w: Window, tz: string) {
 const queryFor = (w: Window): ReadingsQuery =>
   w.range === "custom" ? { from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString() } : { range: w.range };
 
-type Series = "both" | "room" | "duct";
+/**
+ * Which of an AC's lines are on. Each button is its own switch; the room and the duct start
+ * on, the air outside starts off, and a reload goes back to that (the client's spec).
+ */
+type Shown = { room: boolean; duct: boolean; outside: boolean };
+const DEFAULT_SHOWN: Shown = { room: true, duct: true, outside: false };
 
 /* ------------------------------------------------------------------ */
 
@@ -190,7 +197,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
   const win = useMemo(() => windowFromUrl(params, timeZone), [params, timeZone]);
   // The instant the picker was opened, or null while it is closed
   const [picking, setPicking] = useState<number | null>(null);
-  const [series, setSeries] = useState<Series>("both");
+  const [shown, setShown] = useState<Shown>(DEFAULT_SHOWN);
   const [state, setState] = useState<{
     data: ReadingsResponse | null;
     error: string | null;
@@ -242,6 +249,16 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     return breakGaps(raw, maxGapMs(data.bucketMinutes, data.intervalSec));
   }, [data]);
   const hasPoints = data ? data.points.length > 0 : false;
+  // The air outside, as its own series: it has its own timestamps (a sample a quarter hour,
+  // an hour in the backfilled past) and its own gaps
+  const outside = useMemo(() => {
+    if (!data?.weather?.length) return [];
+    const raw = data.weather.map((p) => ({ t: new Date(p.t).getTime(), outsideF: p.tempF }));
+    // Samples come an hour apart in the backfilled past and a quarter hour apart live; only a
+    // bucket of an hour or more changes that spacing, so a finer readings bucket is not the rule
+    const bucket = data.bucketMinutes !== null && data.bucketMinutes >= 60 ? data.bucketMinutes : null;
+    return breakGaps(raw, maxGapMs(bucket, 3600));
+  }, [data]);
 
   const { zones, thresholds } = useMemo(() => bandsFor(unit), [unit]);
 
@@ -249,6 +266,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     const real = points.filter((p): p is Exclude<typeof p, { gap: true }> => !("gap" in p));
     const rooms = real.flatMap((p) => p.band ?? [p.tempF]);
     const ducts = real.map((p) => p.probeTempF).filter((v): v is number => v !== null);
+    const outs = isAC && shown.outside ? outside.flatMap((p) => ("outsideF" in p ? [p.outsideF] : [])) : [];
 
     if (isAC) {
       // The client's rule: a little air below the duct, a little more above the room — on whole
@@ -257,11 +275,11 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
         ducts.length ? floorTo(Math.min(...ducts) - 5, 10) : 30,
         rooms.length ? ceilTo(Math.max(...rooms) + 7, 10) : 90,
       ];
-      return { domain: yDomain(base, [...rooms, ...ducts]) };
+      return { domain: yDomain(base, [...rooms, ...ducts, ...outs]) };
     }
     const base: [number, number] = unit.type === "walk_in_cooler" ? [25, 55] : [0, 40];
     return { domain: yDomain(base, rooms) };
-  }, [points, isAC, unit.type]);
+  }, [points, outside, shown.outside, isAC, unit.type]);
 
   // The axis spans the window asked for, not the points found: an outage at the end shows as
   // empty space, which is the truth of it
@@ -270,8 +288,9 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
   const ticks = useMemo(() => (data ? axisTicks(xFrom, xTo, timeZone, isAC) : null), [data, xFrom, xTo, timeZone, isAC]);
   const custom = win.range === "custom" ? win : null;
 
-  const showRoom = !isAC || series !== "duct";
-  const showDuct = isAC && series !== "room";
+  const showRoom = !isAC || shown.room;
+  const showDuct = isAC && shown.duct;
+  const showOutside = isAC && shown.outside && outside.length > 0;
 
   return (
     <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
@@ -355,6 +374,10 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   <stop offset="0%" stopColor={C.duct} stopOpacity={0.26} />
                   <stop offset="100%" stopColor={C.duct} stopOpacity={0.02} />
                 </linearGradient>
+                <linearGradient id="fillOutside" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.outside} stopOpacity={0.22} />
+                  <stop offset="100%" stopColor={C.outside} stopOpacity={0.02} />
+                </linearGradient>
                 {/* Kept lighter than the AC fills: cold storage already has coloured zones
                     behind the line, and a heavy wash on top of them turns to mud. */}
                 <linearGradient id="fillCold" x1="0" y1="0" x2="0" y2="1">
@@ -413,6 +436,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                     const [lo, hi] = v as [number, number];
                     return [`${lo}°F – ${hi}°F`, "Low – high"];
                   }
+                  if (name === "outsideF") return [`${v}°F`, "Outside"];
                   const what = name === "probeTempF" ? "From the duct" : isAC ? "In the room" : "Temperature";
                   return [`${v}°F`, bucketed ? `${what} (average)` : what];
                 }}
@@ -486,6 +510,19 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   isAnimationActive={false}
                 />
               )}
+              {showOutside && (
+                <Area
+                  type="monotone"
+                  data={outside}
+                  dataKey={(p: (typeof outside)[number]) => ("outsideF" in p ? p.outsideF : null)}
+                  name="outsideF"
+                  stroke={C.outside}
+                  strokeWidth={1.25}
+                  fill="url(#fillOutside)"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              )}
               {showDuct && (
                 <Area
                   type="monotone"
@@ -513,30 +550,39 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
         )}
       </div>
 
-      {/* One control, not three loose buttons — the client asked for them joined up */}
+      {/* One control, not three loose buttons — the client asked for them joined up. Each is
+          a switch of its own: what is pressed is drawn, what is not is taken off the chart. */}
       {isAC && hasPoints && (
         <div className="mt-3 flex overflow-hidden rounded-lg border border-line text-xs font-medium">
           {(
             [
-              { key: "both", label: "Both", color: null },
-              { key: "room", label: "Temperature in room", color: C.room },
-              { key: "duct", label: "Temperature from duct", color: C.duct },
+              { key: "room", label: "Room", color: C.room, available: true },
+              { key: "duct", label: "Duct", color: C.duct, available: true },
+              { key: "outside", label: "Outside", color: C.outside, available: outside.length > 0 },
             ] as const
-          ).map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setSeries(s.key)}
-              className={`flex flex-1 items-center justify-center gap-1.5 px-3 py-2 transition-colors ${
-                series === s.key ? "bg-offline-soft" : "bg-panel hover:bg-offline-soft/60"
-              }`}
-              style={s.color ? { color: s.color } : undefined}
-            >
-              {s.color && (
-                <span aria-hidden className="h-0.5 w-4 rounded-full" style={{ background: s.color }} />
-              )}
-              <span className={s.color ? "" : "text-ink-soft"}>{s.label}</span>
-            </button>
-          ))}
+          ).map((s) => {
+            const on = shown[s.key];
+            return (
+              <button
+                key={s.key}
+                onClick={() => setShown((v) => ({ ...v, [s.key]: !v[s.key] }))}
+                aria-pressed={on}
+                disabled={!s.available}
+                title={s.available ? undefined : "No outdoor temperature recorded for this period"}
+                className={`flex flex-1 items-center justify-center gap-1.5 px-2 py-2 transition-colors disabled:opacity-40 ${
+                  on ? "bg-offline-soft" : "bg-panel text-muted hover:bg-offline-soft/60"
+                }`}
+                style={on ? { color: s.color } : undefined}
+              >
+                <span
+                  aria-hidden
+                  className={`h-0.5 w-4 rounded-full ${on ? "" : "opacity-40"}`}
+                  style={{ background: s.color }}
+                />
+                <span>{s.label}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

@@ -101,7 +101,9 @@ react-leaflet · lucide-react · Prisma 7 with `@prisma/adapter-pg` · vitest.
 (channel 1 | 2 → unit) → `Reading`; `Alert` per unit; `UnitChange`, one row per passport field
 that changed hands (old value, new value, who, when); `User` with `UserDistrict` (managers) and
 `LocationAccess` (technicians); `Session`, `AuthToken`; `UnknownUplink` for anything from a
-device we do not know. All timestamps are `timestamptz` in UTC; each location carries its
+device we do not know; `WeatherReading` per location, the air outside from Open-Meteo (a sample a
+quarter hour from the minute loop, hourly history from `npm run weather:backfill`) for the AC
+chart's third line. All timestamps are `timestamptz` in UTC; each location carries its
 `timezone` for display.
 
 A unit has three bands, all editable per unit:
@@ -220,6 +222,7 @@ rate-limited per IP and reject cross-site origins.
 | --- | --- |
 | `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it; `--location "…"` writes one restaurant's sensors only |
 | `npm run sensors:unknown` | devices talking to us without a mapping: type, last temperatures per channel |
+| `npm run weather:backfill -- --days 365` | outdoor temperature history for every open restaurant, hourly, from Open-Meteo; safe to repeat |
 | `npm run chart:check` | per unit: readings in the last day and week, the latest value, the duct beside the room for an AC |
 | `npm run db:sequences [-- --fix]` | the id counters against the rows they number; a restore leaves them behind |
 | `npm run db:usage` | database size against Supabase's 500 MB, biggest tables, growth per day |

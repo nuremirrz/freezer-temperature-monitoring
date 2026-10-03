@@ -28,6 +28,38 @@ interface BucketRow {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+export interface WeatherPoint {
+  t: string;
+  tempF: number;
+}
+
+/**
+ * The air outside the restaurant over the same window, on the same buckets as the readings
+ * when the readings are bucketed, so the two lines share their timestamps.
+ */
+export async function weatherSeries(db: PrismaClient, locationId: string, w: Window, timeZone: string): Promise<WeatherPoint[]> {
+  const from = new Date(w.from);
+  const to = new Date(w.to);
+  if (w.bucketMinutes === null || w.bucketMinutes < 60) {
+    const rows = await db.weatherReading.findMany({
+      where: { locationId, measuredAt: { gte: from, lte: to } },
+      orderBy: { measuredAt: "asc" },
+      select: { tempF: true, measuredAt: true },
+    });
+    return rows.map((r) => ({ t: r.measuredAt.toISOString(), tempF: r.tempF }));
+  }
+  const rows = await db.$queryRaw<{ bucket: Date; avg: number }[]>`
+    SELECT
+      (date_bin(${`${w.bucketMinutes} minutes`}::interval, "measuredAt" AT TIME ZONE ${timeZone}, TIMESTAMP '2000-01-01') AT TIME ZONE ${timeZone}) AS bucket,
+      AVG("tempF")::float8 AS avg
+    FROM "WeatherReading"
+    WHERE "locationId" = ${locationId} AND "measuredAt" >= ${from} AND "measuredAt" <= ${to}
+    GROUP BY bucket
+    ORDER BY bucket ASC
+  `;
+  return rows.map((r) => ({ t: r.bucket.toISOString(), tempF: round(r.avg) }));
+}
+
 export async function readingSeries(
   db: PrismaClient,
   unitId: string,

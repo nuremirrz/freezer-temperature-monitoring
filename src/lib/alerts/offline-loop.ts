@@ -1,5 +1,7 @@
 import { runOfflineCheck } from "./service";
 import { watchReadingFreshness } from "./freshness";
+import { prisma } from "@/lib/db";
+import { sampleWeather } from "@/lib/weather/store";
 
 const INTERVAL_MS = 60_000;
 const g = globalThis as unknown as { __qimbyOfflineLoop?: NodeJS.Timeout };
@@ -25,6 +27,12 @@ export function startOfflineCheckLoop(): void {
       await watchReadingFreshness();
     } catch (err) {
       console.error("[readings-watch] failed:", err instanceof Error ? err.message : err);
+    }
+    try {
+      // Every quarter hour in practice; the function itself keeps the pace
+      await sampleWeather(prisma);
+    } catch (err) {
+      console.error("[weather] failed:", err instanceof Error ? err.message : err);
     }
   };
 
