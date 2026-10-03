@@ -11,21 +11,27 @@ import { usePhotos, Lightbox, PhotoImg } from "./UnitPhotos";
 /**
  * The unit's card, as in the client's mockup (3 Oct 2026): the nameplate photo large on the
  * left with the others as a strip beneath it and a "1 / 5" counter; on the right the nameplate
- * as a grid — Model and S/N, Year and Refrigerant — and, for an AC, the parts under a rule:
- * Belts, Capacitor, Filters. Empty fields show a grey "—", so what is missing is visible.
+ * — Model, S/N, Year, Refrigerant — and, for an AC, the parts under a rule: Belts, Capacitor,
+ * Filters. Empty fields show a grey "—", so what is missing is visible.
  *
- * Laid out against the card's own width, not the window's: the unit panel is narrow beside
- * the location list and wide on its own, and the card has to read well in both.
+ * Every field is one row in one style, label on the left and value on the right: a model such
+ * as "48TCDD08A2A5A0A0A0" is a code to be copied, not prose, and a code that wraps or spills
+ * over the card is useless. A value too long for the row is cut with an ellipsis, and the whole
+ * of it is in the tooltip. Laid out against the card's own width, not the window's: the unit
+ * panel is narrow beside the location list and wide on its own.
  */
 
 function Field({ unit, f }: { unit: UnitDetail; f: keyof PassportPatch }) {
   const value = unit[f];
   return (
-    <div className="min-w-0">
-      <div className="text-xs text-muted @2xl/card:text-sm">{passportLabel(f)}</div>
-      <div className={`mt-0.5 break-words font-medium @2xl/card:text-xl ${value === null ? "text-faint" : "text-ink"}`}>
+    <div className="flex items-baseline justify-between gap-4 text-sm @2xl/card:text-base">
+      <dt className="shrink-0 text-muted">{passportLabel(f)}</dt>
+      <dd
+        className={`min-w-0 truncate text-right font-medium tabular-nums ${value === null ? "text-faint" : "text-ink"}`}
+        title={value === null ? undefined : String(value)}
+      >
         {value ?? "—"}
-      </div>
+      </dd>
     </div>
   );
 }
@@ -109,13 +115,13 @@ export default function PassportCard({ unit, loc }: { unit: UnitDetail; loc: Loc
       <div className="grid gap-4 @md/card:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] @2xl/card:gap-8">
         <Gallery unit={unit} />
         <div className="min-w-0">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @2xl/card:gap-y-5">
+          <dl className="space-y-2.5 @2xl/card:space-y-3">
             {nameplate.map((f) => <Field key={f} unit={unit} f={f} />)}
-          </div>
+          </dl>
           {parts.length > 0 && (
-            <div className="mt-4 grid grid-cols-3 gap-x-4 border-t border-line-soft pt-4 @2xl/card:mt-5 @2xl/card:pt-5">
+            <dl className="mt-3 space-y-2.5 border-t border-line-soft pt-3 @2xl/card:mt-4 @2xl/card:space-y-3 @2xl/card:pt-4">
               {parts.map((f) => <Field key={f} unit={unit} f={f} />)}
-            </div>
+            </dl>
           )}
         </div>
       </div>
