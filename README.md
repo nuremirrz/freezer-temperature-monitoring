@@ -188,7 +188,7 @@ days without a send.
 | `GET /api/stream` | SSE: `reading` and `alert` events plus heartbeat |
 | `GET/POST /api/team`, `/api/team/[userId]`, `…/invite`, `…/deactivate` | team management |
 | `GET/POST /api/districts`, `/api/districts/[id]` | districts |
-| `POST /api/auth/login`, `logout`, `forgot-password`, `reset-password`, `GET /api/auth/me` | accounts; `/api/auth/register` answers 403 `registration_closed` |
+| `POST /api/auth/login`, `logout`, `forgot-password`, `reset-password`, `GET /api/auth/me` | accounts; there is no sign-up — every account comes from an invitation |
 | `GET /api/health` | public: `ok` or `degraded` with a `reason`; last uplink and last written reading; process memory; measurement fields the parser does not read; notification and mail channel state |
 
 Every read API requires a session (`401` otherwise) and filters by the account's reach.

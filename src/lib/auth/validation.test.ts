@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { registerSchema, loginSchema, emailSchema } from "./validation";
+import { loginSchema, emailSchema, passwordSchema } from "./validation";
 
 describe("auth validation", () => {
   it("normalizes e-mail (trim + lowercase)", () => {
@@ -7,8 +7,8 @@ describe("auth validation", () => {
   });
   it("rejects malformed e-mails and short passwords", () => {
     expect(emailSchema.safeParse("not-an-email").success).toBe(false);
-    expect(registerSchema.safeParse({ email: "a@b.co", password: "short" }).success).toBe(false);
-    expect(registerSchema.safeParse({ email: "a@b.co", password: "long enough" }).success).toBe(true);
+    expect(passwordSchema.safeParse("short").success).toBe(false);
+    expect(passwordSchema.safeParse("long enough").success).toBe(true);
   });
   it("login accepts rememberMe as optional boolean", () => {
     expect(loginSchema.safeParse({ email: "a@b.co", password: "x" }).success).toBe(true);

@@ -147,14 +147,7 @@ export default function AuthLayout({
       </div>
 
       <footer className="flex flex-col items-center gap-3 px-5 py-5 text-center text-xs text-faint md:flex-row md:justify-between md:px-10 md:text-left xl:px-16">
-        <span>© 2024 Burger King Company LLC. All rights reserved.</span>
-        <div className="flex items-center gap-2">
-          <a href="#" className="hover:text-muted">Privacy Policy</a>
-          <span>|</span>
-          <a href="#" className="hover:text-muted">Terms of Service</a>
-          <span>|</span>
-          <a href="#" className="hover:text-muted">Help Center</a>
-        </div>
+        <span>© 2026 Qimby</span>
       </footer>
     </div>
   );

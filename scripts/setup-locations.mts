@@ -10,7 +10,7 @@ import type { UnitType } from "../src/generated/prisma/client";
  *   npm run locations:setup -- --ranges      # also push the thresholds below onto existing units
  *
  * Idempotent, and it only ever adds — retiring a restaurant is a separate, deliberate step
- * (`npm run demo:purge`). Ranges are editable in the app, so a plain run will not quietly
+ * (close it from the owner's Restaurants table). Ranges are editable in the app, so a plain run will not quietly
  * undo someone's change; --ranges says to apply this file's numbers on purpose.
  *
  * Sensors are wired to this equipment from data/sensors.csv afterwards:

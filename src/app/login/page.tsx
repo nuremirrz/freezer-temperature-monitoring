@@ -5,15 +5,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, CheckCircle2, AlertTriangle } from "lucide-react";
 import AuthLayout from "@/components/auth/AuthLayout";
-import { TextField, AuthDivider, GoogleIcon, LockNote, useDemoToast } from "@/components/auth/fields";
+import { TextField, LockNote } from "@/components/auth/fields";
 import { authApi } from "@/lib/auth-client";
 
 const BANNERS: Record<string, { tone: "ok" | "warn"; text: string }> = {
-  verified: { tone: "ok", text: "E-mail confirmed. You can sign in now." },
   reset: { tone: "ok", text: "Password updated. Sign in with the new one." },
   deleted: { tone: "ok", text: "Your account has been deleted." },
   signed_out: { tone: "ok", text: "You have been signed out." },
-  verify_error: { tone: "warn", text: "That confirmation link is invalid or has expired. Request a new one below." },
 };
 
 function Banner({ tone, text }: { tone: "ok" | "warn"; text: string }) {
@@ -33,7 +31,6 @@ function Banner({ tone, text }: { tone: "ok" | "warn"; text: string }) {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const toast = useDemoToast();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,7 +39,6 @@ function LoginForm() {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [unverified, setUnverified] = useState(false);
-  const [resent, setResent] = useState<string | null>(null);
 
   const bannerKey = Object.keys(BANNERS).find((k) => params.get(k) === "1");
   const banner = bannerKey ? BANNERS[bannerKey] : null;
@@ -73,11 +69,6 @@ function LoginForm() {
     router.refresh();
   };
 
-  const resend = async () => {
-    const res = await authApi.resendVerification(email);
-    setResent(res.ok ? (res.data.devVerifyUrl ?? "sent") : res.error.message);
-  };
-
   return (
     <>
       <h2 className="text-center text-2xl font-semibold">Sign in</h2>
@@ -86,26 +77,8 @@ function LoginForm() {
       {banner && <Banner {...banner} />}
 
       {unverified && (
-        <div className="mb-4 rounded-lg bg-warn-soft px-3 py-2.5 text-sm text-warn">
-          <div className="flex items-start gap-2">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-            <div>
-              Confirm your e-mail address first — check your inbox for the link.{" "}
-              <button type="button" onClick={resend} className="font-medium underline">
-                Send it again
-              </button>
-              {resent && resent !== "sent" && !resent.startsWith("http") && (
-                <div className="mt-1 text-xs">{resent}</div>
-              )}
-              {resent === "sent" && <div className="mt-1 text-xs">Sent — check your inbox.</div>}
-              {resent?.startsWith("http") && (
-                <div className="mt-1 text-xs break-all">
-                  Dev mode (no SMTP): <a href={resent} className="underline">{resent}</a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        // Only an account that never finished its invitation lands here
+        <Banner tone="warn" text="This account has not been activated yet. Ask the owner of your organization to send the invitation again." />
       )}
 
       {formError && <Banner tone="warn" text={formError} />}
@@ -114,7 +87,7 @@ function LoginForm() {
         <TextField
           label="Work email"
           type="email"
-          placeholder="name@burgerking.com"
+          placeholder="name@company.com"
           icon={<Mail size={16} />}
           value={email}
           onChange={setEmail}
@@ -156,27 +129,11 @@ function LoginForm() {
         </button>
       </form>
 
-      <AuthDivider />
-
-      <button
-        onClick={() => toast.show()}
-        className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-line py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-page"
-      >
-        <GoogleIcon /> Sign in with Google
-      </button>
-      <button
-        onClick={() => toast.show()}
-        className="mt-4 w-full text-center text-sm font-medium text-accent hover:underline"
-      >
-        Sign in with SSO
-      </button>
-
       <div className="mt-5 border-t border-line-soft pt-4 text-center text-sm text-muted">
         Accounts are created by invitation — ask the owner of your organization for a link.
       </div>
 
       <LockNote />
-      {toast.node}
     </>
   );
 }

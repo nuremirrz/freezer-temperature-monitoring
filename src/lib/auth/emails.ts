@@ -13,19 +13,6 @@ function layout(title: string, body: string, cta: { href: string; label: string 
   </div></body></html>`;
 }
 
-export function verifyEmailMail(to: string, link: string): Mail {
-  return {
-    to,
-    subject: "Confirm your e-mail — Qimby",
-    text: `Confirm your e-mail address to finish creating your Qimby account:\n\n${link}\n\nThe link is valid for 24 hours. If you didn't create an account, ignore this message.`,
-    html: layout(
-      "Confirm your e-mail",
-      "One more step to finish creating your account. The link is valid for 24 hours. If you didn't create an account, you can ignore this message.",
-      { href: link, label: "Confirm e-mail" },
-    ),
-  };
-}
-
 const ROLE_LABEL: Record<string, string> = {
   owner: "an owner",
   district_manager: "a district manager",

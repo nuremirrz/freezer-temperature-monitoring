@@ -1,6 +1,6 @@
 "use client";
 
-/** Thin fetch wrappers for the auth API, used by the login/register/settings screens. */
+/** Thin fetch wrappers for the auth API, used by the sign-in, password and settings screens. */
 
 export interface ApiError {
   error: string;
@@ -36,8 +36,6 @@ export const authApi = {
     call<{ user: { email: string } }>("/api/auth/login", { method: "POST", body: JSON.stringify(data) }),
   logout: () => call<{ status: string }>("/api/auth/logout", { method: "POST", body: "{}" }),
   logoutEverywhere: () => call<{ status: string }>("/api/auth/logout?all=1", { method: "POST", body: "{}" }),
-  resendVerification: (email: string) =>
-    call<{ status: string; devVerifyUrl?: string }>("/api/auth/resend-verification", { method: "POST", body: JSON.stringify({ email }) }),
   forgotPassword: (email: string) =>
     call<{ status: string; devResetUrl?: string }>("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
   resetPassword: (token: string, password: string) =>

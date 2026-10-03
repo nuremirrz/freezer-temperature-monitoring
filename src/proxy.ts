@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "qimby_session";
 /** Reachable without a session */
-const AUTH_PAGES = new Set(["/login", "/register", "/forgot-password", "/reset-password"]);
+const AUTH_PAGES = new Set(["/login", "/forgot-password", "/reset-password"]);
 /** Pointless while signed in */
-const GUEST_ONLY = new Set(["/login", "/register"]);
+const GUEST_ONLY = new Set(["/login"]);
 
 /**
  * Fast cookie-presence gate. The real check (session exists, not expired) happens in the
@@ -31,9 +31,8 @@ export const config = {
     "/",
     "/locations/:path*",
     "/team",
-    "/districts",
+    "/organization",
     "/login",
-    "/register",
     "/forgot-password",
     "/reset-password",
   ],

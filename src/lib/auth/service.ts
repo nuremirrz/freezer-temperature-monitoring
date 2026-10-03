@@ -2,18 +2,17 @@ import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword, DUMMY_HASH } from "./password";
 import { generateToken, hashToken } from "./tokens";
 import { sendMail, mailerMode } from "./mailer";
-import { verifyEmailMail, resetPasswordMail } from "./emails";
+import { resetPasswordMail } from "./emails";
 import { createSession, destroyAllSessions, type SessionMeta } from "./session";
 
 /**
  * Account workflows. Route handlers stay thin; everything that touches users lives here.
  *
  * Privacy notes (per the task): passwords are hashed with scrypt before they reach the database,
- * never logged; every new account gets role `admin` until roles are split; sensor data is
+ * never logged; accounts are created by invitation only (src/lib/auth/team.ts); sensor data is
  * unrelated to users, so deleting an account leaves readings, alerts and sensors intact.
  */
 
-const VERIFY_TTL_MS = 24 * 60 * 60_000;
 const RESET_TTL_MS = 60 * 60_000;
 
 export type AuthFailure = { ok: false; code: string; message: string; status: number };
@@ -27,7 +26,7 @@ function devLink(link: string): string | undefined {
   return mailerMode() === "console" && process.env.NODE_ENV !== "production" ? link : undefined;
 }
 
-async function issueToken(userId: string, type: "email_verify" | "password_reset", ttlMs: number) {
+async function issueToken(userId: string, type: "password_reset", ttlMs: number) {
   // A fresh token supersedes any unused one of the same kind
   await prisma.authToken.updateMany({
     where: { userId, type, usedAt: null },
@@ -38,66 +37,6 @@ async function issueToken(userId: string, type: "email_verify" | "password_reset
     data: { id: hash, userId, type, expiresAt: new Date(Date.now() + ttlMs) },
   });
   return raw;
-}
-
-async function sendVerification(user: { id: string; email: string }, base: string): Promise<string> {
-  const raw = await issueToken(user.id, "email_verify", VERIFY_TTL_MS);
-  const link = `${base}/api/auth/verify?token=${raw}`;
-  await sendMail(verifyEmailMail(user.email, link));
-  return link;
-}
-
-export interface RegisterInput {
-  name?: string;
-  email: string;
-  password: string;
-}
-
-/**
- * Creates an unverified account and e-mails a confirmation link.
- * The response is the same whether or not the e-mail was already taken (no account enumeration):
- * an existing unverified account just gets the confirmation e-mail again.
- */
-export async function registerUser(input: RegisterInput, base: string): Promise<{ devVerifyUrl?: string }> {
-  const existing = await prisma.user.findUnique({ where: { email: input.email } });
-
-  if (existing) {
-    if (existing.emailVerifiedAt) return {}; // silently ignore — the owner can use "forgot password"
-    const link = await sendVerification(existing, base); // never overwrite the stored password here
-    return { devVerifyUrl: devLink(link) };
-  }
-
-  const user = await prisma.user.create({
-    data: {
-      email: input.email,
-      name: input.name?.trim() || null,
-      passwordHash: await hashPassword(input.password),
-      // No role here on purpose: the schema's default is the one with no visibility. Handing
-      // out `admin` was what made an open sign-up form a way into every restaurant.
-    },
-  });
-  const link = await sendVerification(user, base);
-  return { devVerifyUrl: devLink(link) };
-}
-
-export async function resendVerification(email: string, base: string): Promise<{ devVerifyUrl?: string }> {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || user.emailVerifiedAt) return {};
-  const link = await sendVerification(user, base);
-  return { devVerifyUrl: devLink(link) };
-}
-
-export async function verifyEmailToken(raw: string): Promise<AuthResult<{ userId: string }>> {
-  const token = await prisma.authToken.findUnique({ where: { id: hashToken(raw) } });
-  if (!token || token.type !== "email_verify" || token.usedAt || token.expiresAt.getTime() <= Date.now()) {
-    return fail("invalid_token", "This confirmation link is invalid or has expired", 400);
-  }
-  const now = new Date();
-  await prisma.$transaction([
-    prisma.authToken.update({ where: { id: token.id }, data: { usedAt: now } }),
-    prisma.user.update({ where: { id: token.userId }, data: { emailVerifiedAt: now } }),
-  ]);
-  return { ok: true, data: { userId: token.userId } };
 }
 
 export interface LoginInput {

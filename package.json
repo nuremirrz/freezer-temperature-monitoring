@@ -19,8 +19,6 @@
     "fixture:lht65n": "tsx scripts/send-fixture.mts --file fixtures/ttn-uplink-lht65n.json",
     "telegram": "tsx scripts/telegram-setup.mts",
     "sensors:import": "tsx scripts/import-sensors.mts",
-    "demo:purge": "tsx scripts/purge-demo.mts",
-    "clean:testdata": "tsx scripts/clean-test-data.mts",
     "access:grant": "tsx scripts/grant-access.mts",
     "locations:setup": "tsx scripts/setup-locations.mts",
     "backfill:unknown": "tsx scripts/backfill-unknown.mts",
