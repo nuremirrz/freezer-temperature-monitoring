@@ -32,13 +32,16 @@ export interface AlertEvent {
   };
 }
 
-/** A unit's own settings changed (normal range, installation details) — statuses may shift. */
+/**
+ * A unit changed. "updated": its settings (normal range, passport) — statuses may shift.
+ * "photos": a nameplate photo was added or removed — only the photo strip needs fetching.
+ */
 export interface UnitEvent {
   type: "unit";
   data: {
     unitId: string;
     locationId: string;
-    state: "updated";
+    state: "updated" | "photos";
   };
 }
 

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus, X, Trash2, ChevronLeft, ChevronRight, Loader2, RotateCw } from "lucide-react";
 import { preparePhoto, uploadPhoto, PhotoError, type UploadedPhoto } from "@/lib/photos-client";
+import { onPhotosChanged, photosChanged } from "@/lib/photo-events";
 
 /**
  * The unit's nameplate photos.
@@ -62,6 +63,9 @@ export function usePhotos(unitId: string) {
     return () => { alive = false; };
   }, [unitId, tick]);
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  // Another view of the same unit — the card under the popup, or someone else's screen via
+  // the live stream — changed the photos: fetch them again.
+  useEffect(() => onPhotosChanged((changed) => { if (changed === unitId) reload(); }), [unitId, reload]);
   return { photos, setPhotos, canEdit, storage, reload };
 }
 
@@ -104,7 +108,7 @@ export function Lightbox({ photos, index, onClose }: { photos: UploadedPhoto[]; 
 }
 
 export default function UnitPhotos({ unitId, editable = false }: { unitId: string; editable?: boolean }) {
-  const { photos, setPhotos, canEdit, storage, reload } = usePhotos(unitId);
+  const { photos, setPhotos, canEdit, storage } = usePhotos(unitId);
   const [open, setOpen] = useState<number | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +127,7 @@ export default function UnitPhotos({ unitId, editable = false }: { unitId: strin
         const uploaded = await uploadPhoto(unitId, prepared, (attempt) => set({ state: "retrying", message: `No connection — retry ${attempt}` }));
         setPending((ps) => ps.filter((p) => p.key !== key));
         setPhotos((ps) => [...(ps ?? []), uploaded]);
+        photosChanged(unitId);
       } catch (err) {
         set({ state: "failed", message: err instanceof PhotoError ? err.message : "Upload failed" });
       }
@@ -153,7 +158,7 @@ export default function UnitPhotos({ unitId, editable = false }: { unitId: strin
       return;
     }
     setPhotos((ps) => (ps ?? []).filter((p) => p.id !== id));
-    reload();
+    photosChanged(unitId);
   };
 
   if (photos === null) return null;

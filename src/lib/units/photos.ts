@@ -5,6 +5,7 @@ import { fail, type AuthResult } from "@/lib/auth/service";
 import { canEditPassport } from "@/lib/auth/permissions";
 import { visibleLocationIds, canSee } from "@/lib/auth/access";
 import { getStorage, type ObjectStorage } from "@/lib/storage";
+import { publish } from "@/lib/events";
 
 /**
  * Nameplate photos: up to five per unit, seen by whoever sees the unit, added and removed by
@@ -101,6 +102,7 @@ export async function addPhoto(
     },
     select: photoSelect,
   });
+  publish({ type: "unit", data: { unitId, locationId: unit.locationId, state: "photos" } });
   return { ok: true, data: view(row) };
 }
 
@@ -117,6 +119,7 @@ export async function deletePhoto(
   if (!photo) return fail("not_found", "Photo not found", 404);
   // Row first: once it is gone nobody can see the photo, and a leftover file is only space.
   await prisma.unitPhoto.delete({ where: { id: photo.id } });
+  publish({ type: "unit", data: { unitId, locationId: unit.locationId, state: "photos" } });
   try {
     await storage.remove(photo.path);
   } catch (err) {

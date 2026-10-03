@@ -8,6 +8,7 @@ import {
   StatusCounts,
   ApiError,
 } from "@/lib/api";
+import { photosChanged } from "@/lib/photo-events";
 
 /**
  * Live view of the pilot data.
@@ -149,8 +150,13 @@ export const useLiveStore = create<LiveState>((set, get) => ({
       });
 
       source.addEventListener("unit", (ev) => {
+        const data = JSON.parse((ev as MessageEvent).data) as { locationId: string; unitId: string; state?: string };
+        // A photo changed: the strip fetches itself again; statuses are untouched
+        if (data.state === "photos") {
+          photosChanged(data.unitId);
+          return;
+        }
         // A normal range moved, so every status derived from it may have moved too
-        const data = JSON.parse((ev as MessageEvent).data) as { locationId: string };
         void get().loadLocations();
         if (get().details[data.locationId]) void get().loadLocation(data.locationId);
       });
