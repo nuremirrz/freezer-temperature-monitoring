@@ -21,12 +21,12 @@ const AC_ONLY = ["belts", "capacitor", "filter"] as const;
 
 const LABEL: Record<keyof PassportPatch, string> = {
   model: "Model",
-  serial: "Serial N",
+  serial: "S/N",
   year: "Year",
   refrigerant: "Refrigerant",
   belts: "Belts",
   capacitor: "Capacitor",
-  filter: "Filter",
+  filter: "Filters",
 };
 const HINT: Partial<Record<keyof PassportPatch, string>> = {
   model: "TRANE 4TTR3036",
@@ -49,26 +49,9 @@ const btn = {
 };
 const input = "w-full rounded-lg border border-line bg-page px-3 py-2 text-sm outline-none focus:border-primary";
 
-export function PassportList({ unit }: { unit: UnitDetail }) {
-  return (
-    <>
-    <dl className="space-y-1.5 text-sm">
-      {passportFields(unit).map((f) => (
-        <div key={f} className="flex gap-2">
-          <dt className="w-24 shrink-0 text-muted">{LABEL[f]}:</dt>
-          {/* Grey "—" rather than nothing: a missing field should look missing */}
-          <dd className={unit[f] === null ? "text-faint" : "font-medium"}>{unit[f] ?? "—"}</dd>
-        </div>
-      ))}
-      {unit.passportUpdatedAt && (
-        <div className="pt-1 text-xs text-faint">
-          Updated {new Date(unit.passportUpdatedAt).toLocaleDateString()} by {unit.passportUpdatedBy?.name ?? unit.passportUpdatedBy?.email ?? "—"}
-        </div>
-      )}
-    </dl>
-    <UnitPhotos unitId={unit.id} />
-    </>
-  );
+/** The label a field is shown under, on the card and in the popup alike. */
+export function passportLabel(f: keyof PassportPatch): string {
+  return LABEL[f];
 }
 
 export function PassportEditButton({ unit, locationId }: { unit: UnitDetail; locationId: string }) {
@@ -77,8 +60,8 @@ export function PassportEditButton({ unit, locationId }: { unit: UnitDetail; loc
   if (!canEditPassport(me)) return null;
   return (
     <>
-      <button onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-offline-soft">
-        <Pencil size={12} /> Edit
+      <button onClick={() => setOpen(true)} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-line bg-panel px-3 py-1.5 text-sm font-medium text-ink-soft shadow-sm transition-colors hover:bg-offline-soft">
+        <Pencil size={14} /> Edit details
       </button>
       {open && <PassportModal unit={unit} locationId={locationId} onClose={() => setOpen(false)} />}
     </>

@@ -1,7 +1,5 @@
 "use client";
 
-/* eslint-disable @next/next/no-img-element */
-
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -19,8 +17,6 @@ import {
 import {
   LocationDetail,
   UnitDetail,
-  UNIT_IMAGE,
-  UNIT_TYPE_LABEL,
   formatTemp,
   tempReadout,
   TEMP_LEVEL_CLASS,
@@ -31,7 +27,7 @@ import {
 import { useLiveStore } from "@/store/useLiveStore";
 import TempChart from "./TempChart";
 import RangeEditor from "./RangeEditor";
-import { PassportList, PassportEditButton } from "./PassportEditor";
+import PassportCard from "./PassportCard";
 
 function Tile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -99,26 +95,8 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
           </Link>
         </div>
 
-        {/* Unit description */}
-        <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-line bg-panel p-4 md:p-5">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-lg font-semibold">{unit.name}</h3>
-                <div className="mb-4 text-sm text-muted">
-                  {loc.name} · {UNIT_TYPE_LABEL[unit.type]}
-                </div>
-              </div>
-              <PassportEditButton unit={unit} locationId={loc.id} />
-            </div>
-            <PassportList unit={unit} />
-          </div>
-          <img
-            src={UNIT_IMAGE[unit.type]}
-            alt={UNIT_TYPE_LABEL[unit.type]}
-            className="h-20 w-20 shrink-0 rounded-lg border border-line-soft bg-page object-contain p-2 @sm:h-32 @sm:w-32"
-          />
-        </div>
+        {/* Unit card: nameplate photos and the passport */}
+        <PassportCard unit={unit} loc={loc} />
 
         {/* Current State */}
         <div className="mb-4">

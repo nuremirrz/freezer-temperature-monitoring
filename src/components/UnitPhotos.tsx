@@ -24,7 +24,27 @@ interface Pending {
   file: File;
 }
 
-function usePhotos(unitId: string) {
+/**
+ * A photo that tries once more if it fails to load. Each photo is fetched through our route,
+ * which checks access and then redirects to a signed link; a hiccup on either hop should not
+ * leave a broken image on the card.
+ */
+export function PhotoImg({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const url = attempt === 0 ? src : `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}`;
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (attempt < 2) setTimeout(() => setAttempt((a) => a + 1), 600 * (attempt + 1));
+      }}
+    />
+  );
+}
+
+export function usePhotos(unitId: string) {
   const [photos, setPhotos] = useState<UploadedPhoto[] | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [storage, setStorage] = useState<string>("local");
@@ -45,7 +65,7 @@ function usePhotos(unitId: string) {
   return { photos, setPhotos, canEdit, storage, reload };
 }
 
-function Lightbox({ photos, index, onClose }: { photos: UploadedPhoto[]; index: number; onClose: () => void }) {
+export function Lightbox({ photos, index, onClose }: { photos: UploadedPhoto[]; index: number; onClose: () => void }) {
   const [i, setI] = useState(index);
   const go = useCallback((d: number) => setI((x) => (x + d + photos.length) % photos.length), [photos.length]);
   useEffect(() => {
@@ -66,13 +86,13 @@ function Lightbox({ photos, index, onClose }: { photos: UploadedPhoto[]; index: 
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center gap-3" onClick={(e) => e.stopPropagation()}>
         {photos.length > 1 && <button title="Previous" onClick={() => go(-1)} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><ChevronLeft size={20} /></button>}
-        <img src={p.url} alt="Nameplate" className="max-h-full max-w-full rounded-lg object-contain" />
+        <PhotoImg src={p.url} alt="Nameplate" className="max-h-full max-w-full rounded-lg object-contain" />
         {photos.length > 1 && <button title="Next" onClick={() => go(1)} className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><ChevronRight size={20} /></button>}
       </div>
       <div className="mt-3 flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
         {photos.map((q, j) => (
           <button key={q.id} onClick={() => setI(j)} className={`size-14 overflow-hidden rounded-md border-2 ${j === i ? "border-white" : "border-transparent opacity-60 hover:opacity-100"}`}>
-            <img src={q.url} alt="" className="size-full object-cover" />
+            <PhotoImg src={q.url} alt="" className="size-full object-cover" />
           </button>
         ))}
       </div>
@@ -147,7 +167,7 @@ export default function UnitPhotos({ unitId, editable = false }: { unitId: strin
         {photos.map((p, i) => (
           <div key={p.id} className={tile}>
             <button onClick={() => setOpen(i)} className="size-full" title="Open">
-              <img src={p.url} alt="Nameplate" className="size-full object-cover" />
+              <PhotoImg src={p.url} alt="Nameplate" className="size-full object-cover" />
             </button>
             {edit && (
               <button title="Remove photo" onClick={() => void remove(p.id)} className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full bg-ink/70 text-white hover:bg-alert">
