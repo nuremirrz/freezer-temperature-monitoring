@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Mail, Lock, CheckCircle2, AlertTriangle } from "lucide-react";
 import AuthLayout from "@/components/auth/AuthLayout";
 import { TextField, LockNote } from "@/components/auth/fields";
@@ -12,6 +12,7 @@ const BANNERS: Record<string, { tone: "ok" | "warn"; text: string }> = {
   reset: { tone: "ok", text: "Password updated. Sign in with the new one." },
   deleted: { tone: "ok", text: "Your account has been deleted." },
   signed_out: { tone: "ok", text: "You have been signed out." },
+  expired: { tone: "warn", text: "Your session has ended. Sign in again." },
 };
 
 function Banner({ tone, text }: { tone: "ok" | "warn"; text: string }) {
@@ -29,7 +30,6 @@ function Banner({ tone, text }: { tone: "ok" | "warn"; text: string }) {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
 
   const [email, setEmail] = useState("");
@@ -65,8 +65,8 @@ function LoginForm() {
       return;
     }
     const target = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/locations";
-    router.push(target);
-    router.refresh();
+    // A full load, so whatever the previous account left in the page's memory is gone
+    window.location.assign(target);
   };
 
   return (

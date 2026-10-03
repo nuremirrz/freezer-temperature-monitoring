@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { MapPin, Users, LayoutGrid, ClipboardCheck, LineChart, Bell, Settings, LogOut } from "lucide-react";
 import { authApi } from "@/lib/auth-client";
 import { canManageTeam, canManageLocations, invitableRoles } from "@/lib/auth/permissions";
@@ -24,7 +24,6 @@ const COMING_SOON = [
 export default function Sidebar() {
   const me = useMe();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const router = useRouter();
   const pathname = usePathname();
 
   // Drawn by the same rules the server enforces: a link that would only lead to a 403 is not a link.
@@ -38,8 +37,10 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     await authApi.logout();
-    router.push("/login?signed_out=1");
-    router.refresh();
+    // A full load, not a transition inside the app: the live store and the open event stream
+    // belong to the person who just left, and the next person must start from nothing
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full load is the point
+    window.location.assign("/login?signed_out=1");
   };
 
   return (

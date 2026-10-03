@@ -49,6 +49,23 @@ const RECONNECT_MS = 10_000;
 
 let started = false;
 let source: EventSource | null = null;
+let leaving = false;
+
+/**
+ * The session is gone (signed out elsewhere, or expired): stop everything and go to sign in.
+ * Not an error to show in the list — there is nobody to show it to.
+ */
+function sessionEnded() {
+  if (leaving) return;
+  leaving = true;
+  source?.close();
+  source = null;
+  const here = window.location.pathname + window.location.search;
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full load is the point
+  window.location.assign(`/login?expired=1&next=${encodeURIComponent(here)}`);
+}
+
+const ended = (err: unknown) => err instanceof ApiError && err.status === 401;
 
 function message(err: unknown): string {
   if (err instanceof ApiError) return err.message;
@@ -75,6 +92,7 @@ export const useLiveStore = create<LiveState>((set, get) => ({
       const data = await api.locations();
       set({ locations: data.locations, summary: data.summary, listLoaded: true, listError: null });
     } catch (err) {
+      if (ended(err)) return sessionEnded();
       set({ listError: message(err), listLoaded: true });
     }
   },
@@ -87,6 +105,7 @@ export const useLiveStore = create<LiveState>((set, get) => ({
         detailError: { ...s.detailError, [id]: "" },
       }));
     } catch (err) {
+      if (ended(err)) return sessionEnded();
       set((s) => ({ detailError: { ...s.detailError, [id]: message(err) } }));
     }
   },
