@@ -17,7 +17,7 @@ import { prisma } from "../src/lib/db";
  */
 
 const fix = process.argv.includes("--fix");
-const TABLES = ["Reading", "UnknownUplink"] as const;
+const TABLES = ["Reading", "UnknownUplink", "UnitChange"] as const;
 
 let broken = 0;
 for (const table of TABLES) {

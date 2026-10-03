@@ -31,6 +31,7 @@ import {
 import { useLiveStore } from "@/store/useLiveStore";
 import TempChart from "./TempChart";
 import RangeEditor from "./RangeEditor";
+import { PassportList, PassportEditButton } from "./PassportEditor";
 
 function Tile({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -100,29 +101,17 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
 
         {/* Unit description */}
         <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-line bg-panel p-4 md:p-5">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold">{unit.name}</h3>
-            <div className="mb-4 text-sm text-muted">
-              {loc.name} · {UNIT_TYPE_LABEL[unit.type]}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-semibold">{unit.name}</h3>
+                <div className="mb-4 text-sm text-muted">
+                  {loc.name} · {UNIT_TYPE_LABEL[unit.type]}
+                </div>
+              </div>
+              <PassportEditButton unit={unit} locationId={loc.id} />
             </div>
-            <dl className="space-y-1.5 text-sm">
-              <div className="flex gap-2">
-                <dt className="w-24 shrink-0 text-muted">Model:</dt>
-                <dd className="font-medium">{unit.model ?? "—"}</dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="w-24 shrink-0 text-muted">Serial N:</dt>
-                <dd className="font-medium">{unit.serial ?? "—"}</dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="w-24 shrink-0 text-muted">Year:</dt>
-                <dd className="font-medium">{unit.year ?? "—"}</dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="w-24 shrink-0 text-muted">Refrigerant:</dt>
-                <dd className="font-medium">{unit.refrigerant ?? "—"}</dd>
-              </div>
-            </dl>
+            <PassportList unit={unit} />
           </div>
           <img
             src={UNIT_IMAGE[unit.type]}

@@ -41,6 +41,7 @@ export const BACKUP_MODELS: BackupModel[] = [
   { name: "Reading", delegate: "reading", cursor: "id" },
   { name: "Alert", delegate: "alert", cursor: "id" },
   { name: "UnknownUplink", delegate: "unknownUplink", cursor: "id" },
+  { name: "UnitChange", delegate: "unitChange", cursor: "id" },
 ];
 
 export interface BackupMeta {

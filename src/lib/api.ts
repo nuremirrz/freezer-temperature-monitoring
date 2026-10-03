@@ -81,6 +81,12 @@ export interface UnitDetail {
   serial: string | null;
   year: number | null;
   refrigerant: string | null;
+  /** The parts, for an AC: as written on the part, so a technician can buy the right one */
+  belts: string | null;
+  capacitor: string | null;
+  filter: string | null;
+  passportUpdatedAt: string | null;
+  passportUpdatedBy: { name: string | null; email: string } | null;
   /** The normal band — shown in the table and painted green on the chart */
   rangeMinF: number;
   rangeMaxF: number;
@@ -212,7 +218,24 @@ export const api = {
       `/api/units/${unitId}`,
       body,
     ),
+  /** The nameplate and the parts; any role may, the technician first of all */
+  updatePassport: (unitId: string, body: PassportPatch) => patch<Passport>(`/api/units/${unitId}/passport`, body),
 };
+
+export interface PassportPatch {
+  model?: string | null;
+  serial?: string | null;
+  year?: number | null;
+  refrigerant?: string | null;
+  belts?: string | null;
+  capacitor?: string | null;
+  filter?: string | null;
+}
+
+export interface Passport extends Required<PassportPatch> {
+  updatedAt: string | null;
+  updatedBy: { id: string; name: string | null; email: string } | null;
+}
 
 /* ------------------------------------------------------------------ */
 /* Presentation helpers                                                */

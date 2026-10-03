@@ -118,6 +118,8 @@ model User {
   tokens       AuthToken[]
   access       LocationAccess[]
   districts    UserDistrict[]
+  unitChanges  UnitChange[]
+  passportEdits Unit[] @relation("PassportUpdates")
 
   @@index([organizationId])
 }
@@ -217,6 +219,15 @@ model Unit {
   year        Int?
   /// Refrigerant type, e.g. "R-448A". Entered by the technician at installation.
   refrigerant String?
+  /// The rest of the nameplate, for an AC: what a technician buying a replacement needs to
+  /// know. Free text, as written on the part — "A42, 2 шт", "45/5 µF, 370V", "20x25x1, 2 шт".
+  belts       String?
+  capacitor   String?
+  filter      String?
+  /// Who last touched the passport and when; every change is also a UnitChange row.
+  passportUpdatedAt   DateTime? @db.Timestamptz(6)
+  passportUpdatedById String?
+  passportUpdatedBy   User?     @relation("PassportUpdates", fields: [passportUpdatedById], references: [id], onDelete: SetNull)
   /// The normal band: what the table calls "Normal Range" and the chart paints green.
   /// Leaving it colours the reading, but on its own raises nothing.
   rangeMinF   Float
@@ -235,9 +246,27 @@ model Unit {
   channels SensorChannel[]
   readings Reading[]
   alerts   Alert[]
+  changes  UnitChange[]
 
   @@unique([locationId, name])
   @@index([locationId])
+}
+
+/// One field of a unit's passport changing hands: what it said, what it says now, who, when.
+/// A unit replaced whole leaves its old model and serial here; a capacitor swapped during a
+/// repair will leave its old rating here once the technician's report writes the passport.
+model UnitChange {
+  id        Int      @id @default(autoincrement())
+  unitId    String
+  unit      Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([unitId, changedAt(sort: Desc)])
 }
 
 model Sensor {

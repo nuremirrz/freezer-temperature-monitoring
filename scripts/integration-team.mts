@@ -12,6 +12,7 @@ import { inviteUser, listTeam, updateMember, deactivateMember, resendInvite, rev
 import { listDistricts, createDistrict, updateDistrict, deleteDistrict } from "../src/lib/auth/districts";
 import { listOrganization, createLocation, updateLocation } from "../src/lib/auth/locations";
 import type { Geocoder } from "../src/lib/geocode";
+import { updatePassport } from "../src/lib/units/passport";
 
 /**
  * Runs the team and district services end to end against a throwaway database, through every
@@ -223,6 +224,24 @@ check("в таблице владельца он остался, последн�
 r = await updateLocation(S2.owner, L4, { active: true }, pin);
 vis = await visibleLocationIds(await session(tech));
 check("открыт заново — техник снова видит", r.ok && r.data.active && vis !== "all" && vis.includes(L4));
+
+console.log("\n=== паспорт юнита ===");
+// L4 is the restaurant the technician was placed on from the owner's table above
+const pUnit = await prisma.unit.create({ data: { locationId: L4, type: "ac", name: "AC-P", rangeMinF: 65, rangeMaxF: 80 } });
+r = await updatePassport(await session(tech), pUnit.id, { model: "TRANE 4TTR3036", capacitor: "45/5 µF, 370V" });
+check("техник заполняет паспорт на своей точке", r.ok && r.data.model === "TRANE 4TTR3036" && r.data.changed.length === 2, r.ok ? "" : `${r.code}`);
+check("паспорт помнит, кто и когда", r.ok && r.data.updatedBy?.id === tech.id && r.data.updatedAt !== null);
+r = await updatePassport(await session(tech), pUnit.id, { model: "TRANE 4TTR3036" });
+check("повтор того же значения ничего не меняет", r.ok && r.data.changed.length === 0);
+r = await updatePassport(await session(tech), pUnit.id, { serial: "NEW-001", capacitor: null });
+check("серийник записан, капаситор очищен", r.ok && r.data.serial === "NEW-001" && r.data.capacitor === null);
+const log = await prisma.unitChange.findMany({ where: { unitId: pUnit.id }, orderBy: { id: "asc" } });
+check("лог: 4 изменения, старые значения сохранены", log.length === 4 && log.some((c) => c.field === "capacitor" && c.oldValue === "45/5 µF, 370V" && c.newValue === null), `${log.length}`);
+r = await updatePassport(S2.owner, pUnit.id, { year: 2014 });
+check("владелец тоже правит паспорт", r.ok && r.data.year === 2014);
+const stranger = await mkUser("stranger@t.io", "technician");
+r = await updatePassport(await session(stranger), pUnit.id, { year: 2015 });
+check("техник без этой точки → 404", !r.ok && r.status === 404, `${r.code}`);
 
 console.log("\n=== admin при единственной организации ===");
 const dev = await prisma.user.findUniqueOrThrow({ where: { email: "dev@t.io" } });

@@ -111,3 +111,24 @@ export const locationPatchSchema = z
     technicianIds: idList.optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "Nothing to change" });
+
+/** Refrigerants the form offers; anything else is typed under "Other". */
+export const REFRIGERANTS = ["R-410A", "R-22", "R-32", "R-454B", "R-448A"] as const;
+
+const nameplate = (max = 80) => z.string().trim().max(max, "Too long").transform((v) => v || null).nullable().optional();
+
+/**
+ * The unit's passport as a technician fills it in at the unit. Every field optional, every
+ * field free text as written on the part, except the year, which is a year.
+ */
+export const passportPatchSchema = z
+  .object({
+    model: nameplate(80),
+    serial: nameplate(80),
+    year: z.number().int().min(1950).max(new Date().getFullYear()).nullable().optional(),
+    refrigerant: nameplate(40),
+    belts: nameplate(80),
+    capacitor: nameplate(80),
+    filter: nameplate(80),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: "Nothing to change" });

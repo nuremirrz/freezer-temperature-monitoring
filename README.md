@@ -36,7 +36,7 @@ everything.
 | Sign in, forgot / reset password | `/login`, `/forgot-password`, `/reset-password` | everyone |
 | Locations | `/locations` | status per restaurant, Alerts / Offline / Normal counts, map; filtered to what the account may see |
 | Location | `/locations/[id]` | units table with live temperature, status, normal range and alert duration; outdoor weather |
-| Unit | `/locations/[id]/units/[unitId]` | current state, editable normal range, 24 h / 7 d / 30 d chart with the normal band, nameplate |
+| Unit | `/locations/[id]/units/[unitId]` | current state, editable normal range, 24 h / 7 d / 30 d chart with the normal band, the unit passport with an edit popup |
 | Team | `/team` | owner and district managers: invite, change role and scope, deactivate, resend or revoke invitations |
 | Restaurants & people | `/organization` | owner: one row per restaurant with its manager and technicians; add, rename, re-address, close and reopen restaurants |
 
@@ -93,7 +93,8 @@ react-leaflet · lucide-react · Prisma 7 with `@prisma/adapter-pg` · vitest.
 ### Data model (Prisma)
 
 `Organization` → `District` → `Location` → `Gateway`, `Unit`, `Sensor` → `SensorChannel`
-(channel 1 | 2 → unit) → `Reading`; `Alert` per unit; `User` with `UserDistrict` (managers) and
+(channel 1 | 2 → unit) → `Reading`; `Alert` per unit; `UnitChange`, one row per passport field
+that changed hands (old value, new value, who, when); `User` with `UserDistrict` (managers) and
 `LocationAccess` (technicians); `Session`, `AuthToken`; `UnknownUplink` for anything from a
 device we do not know. All timestamps are `timestamptz` in UTC; each location carries its
 `timezone` for display.
@@ -170,7 +171,8 @@ days without a send.
 | `GET /api/units/[id]/readings?range=24h\|7d\|30d` | chart series; 7d and 30d are averaged in SQL |
 | `POST /api/locations`, `PATCH /api/locations/[id]` | add a restaurant; rename, re-address, close or reopen it, set its manager and technicians |
 | `GET /api/organization` | the owner's table: every restaurant, closed ones included, with who is on it |
-| `PATCH /api/units/[id]` | normal, alert and duct bands, refrigerant and year |
+| `PATCH /api/units/[id]` | normal, alert and duct bands; owners and managers |
+| `PATCH /api/units/[id]/passport` | the nameplate and the parts: model, serial, year, refrigerant, belts, capacitor, filter; every role, the technician first of all; each change leaves a `UnitChange` row |
 | `GET /api/stream` | SSE: `reading` and `alert` events plus heartbeat |
 | `GET/POST /api/team`, `/api/team/[userId]`, `…/invite`, `…/deactivate` | team management |
 | `GET/POST /api/districts`, `/api/districts/[id]` | districts |
@@ -246,8 +248,8 @@ hours. Supabase caps the database at 500 MB; the whole history so far is a few m
 
 ## Where things stand
 
-Of the client's feature list, **Roles** is complete and deployed. Not yet built: the rest of the
-unit passport (belts, capacitor, filter), technician work reports, digests to the owner, an
+Of the client's feature list, **Roles** is complete and deployed, and the **unit passport** is
+built except for nameplate photos (storage still to be chosen). Not yet built: technician work reports, digests to the owner, an
 alert-history screen (the data is there), work history, the preventive-maintenance schedule and
 the weekly report. Whittier AC2 and AC3 are deliberately unmapped until their second probes
 arrive (`npm run sensors:import` brings them back). The alert threshold is one hour for every
