@@ -1,0 +1,76 @@
+name: CI
+
+# Every push and pull request is checked before it can reach production. Render deploys main
+# only after these checks pass (autoDeployTrigger: checksPass in render.yaml), so a commit that
+# breaks the types, the lint, a unit test, the database scenarios or the build stays on GitHub.
+#
+# The repository is PUBLIC: run logs are world-readable. Nothing here touches production — the
+# database is a throwaway Postgres inside the job, and no secret is used.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: qimby
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # localhost, so the integration script's "refuse anything that looks like production" guard
+      # lets it run; it wipes this database first.
+      DATABASE_URL: postgres://postgres:ci@localhost:5432/qimby
+      # Never let a test reach a mailbox or a Telegram group
+      BREVO_API_KEY: ""
+      SMTP_URL: ""
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_CHAT_ID: ""
+      OFFLINE_CHECK_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.18.0
+          cache: npm
+
+      # postinstall runs prisma generate
+      - run: npm ci
+
+      - name: Types
+        run: npx tsc --noEmit -p .
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Migrations apply to an empty database
+        run: npx prisma migrate deploy
+
+      - name: Database scenarios (roles, restaurants, passport, reading writes)
+        run: npm run test:integration
+
+      - name: Production build
+        run: npm run build

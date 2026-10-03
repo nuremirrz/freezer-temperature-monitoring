@@ -11,7 +11,9 @@ services:
     # Migrations run on every deploy, before the server starts
     startCommand: npx prisma migrate deploy && npm run start
     healthCheckPath: /api/health
-    autoDeployTrigger: commit
+    # Deploy main only after the GitHub checks in .github/workflows/ci.yml pass. Render will not
+    # deploy a commit with no checks at all, or with a failing one.
+    autoDeployTrigger: checksPass
     envVars:
       - key: NODE_VERSION
         value: 22.18.0

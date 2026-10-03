@@ -4,6 +4,7 @@ import { notificationHealth } from "@/lib/notify";
 import { mailStatus } from "@/lib/auth/mailer";
 import { currentFreshness, READINGS_STALLED_AFTER_MIN } from "@/lib/alerts/freshness";
 import { unreadFieldsSeen } from "@/lib/ttn/unread";
+import { writeErrorStatus } from "@/lib/readings/write";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,11 @@ export async function GET() {
   try {
     const [count, f] = await Promise.all([prisma.sensor.count(), currentFreshness(now)]);
     const noUplink = count > 0 && (f.minutesSinceUplink === null || f.minutesSinceUplink > DEGRADED_AFTER_MIN);
-    const reason = f.stalled ? "readings_stalled" : noUplink ? "no_uplink" : null;
+    const writes = writeErrorStatus();
+    // A failed write in the last hour is our fault and is said first: it is what came before
+    // the two silent days of September 2026, and it shows up before "stalled" does.
+    const recentWriteError = writes.lastFailedAt !== null && now.getTime() - Date.parse(writes.lastFailedAt) < 60 * 60_000;
+    const reason = recentWriteError ? "write_errors" : f.stalled ? "readings_stalled" : noUplink ? "no_uplink" : null;
 
     return NextResponse.json({
       status: reason ? "degraded" : "ok",
@@ -37,6 +42,8 @@ export async function GET() {
       lastReadingAt: f.lastReadingAt?.toISOString() ?? null,
       minutesSinceLastReading: f.minutesSinceReading,
       readingsStalledAfterMinutes: READINGS_STALLED_AFTER_MIN,
+      // Inserts that failed for any reason other than a true duplicate since this process started
+      writeErrors: writes,
       // The Render free instance has 512 MB; this is what the Node process holds right now.
       memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
       // Measurement fields some device sends that the parser does not read — a new probe or

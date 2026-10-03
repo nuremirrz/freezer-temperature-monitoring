@@ -13,6 +13,7 @@ import { listDistricts, createDistrict, updateDistrict, deleteDistrict } from ".
 import { listOrganization, createLocation, updateLocation } from "../src/lib/auth/locations";
 import type { Geocoder } from "../src/lib/geocode";
 import { updatePassport } from "../src/lib/units/passport";
+import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
 
 /**
  * Runs the team and district services end to end against a throwaway database, through every
@@ -242,6 +243,27 @@ check("владелец тоже правит паспорт", r.ok && r.data.ye
 const stranger = await mkUser("stranger@t.io", "technician");
 r = await updatePassport(await session(stranger), pUnit.id, { year: 2015 });
 check("техник без этой точки → 404", !r.ok && r.status === 404, `${r.code}`);
+
+console.log("\n=== запись показаний: дубль молча, всё остальное громко ===");
+const wSensor = await prisma.sensor.create({ data: { devEui: "A8404100000000FF", locationId: L4 } });
+const row = { unitId: pUnit.id, sensorId: wSensor.id, channel: 1, tempF: 70, probeTempF: 55, measuredAt: new Date("2026-10-03T10:00:00Z") };
+let w = await insertReadings(prisma, [row]);
+check("первая запись проходит", w.length === 1);
+w = await insertReadings(prisma, [row]);
+check("тот же датчик, канал и время — пропущен без ошибки", w.length === 0);
+// The September failure: the id counter behind the rows. A skip-any-conflict insert lost
+// every reading this way without a word; the targeted one must throw.
+// Point the counter at an id that is already taken: the next insert must collide on it.
+await prisma.$executeRawUnsafe(`SELECT setval('"Reading_id_seq"', (SELECT min(id) FROM "Reading"), false)`);
+let threw = false;
+try {
+  await insertReadings(prisma, [{ ...row, measuredAt: new Date("2026-10-03T10:05:00Z") }]);
+} catch {
+  threw = true;
+}
+check("сломанный счётчик — ошибка, а не тишина", threw);
+check("ошибка записи видна в счётчике для health", writeErrorStatus().failures >= 1);
+await prisma.$executeRawUnsafe(`SELECT setval('"Reading_id_seq"', (SELECT max(id) FROM "Reading"), true)`);
 
 console.log("\n=== admin при единственной организации ===");
 const dev = await prisma.user.findUniqueOrThrow({ where: { email: "dev@t.io" } });

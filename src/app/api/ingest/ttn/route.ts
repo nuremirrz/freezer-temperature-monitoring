@@ -4,6 +4,7 @@ import { parseTtnUplink, ParsedUplink } from "@/lib/ttn/parse";
 import { processNewReading, resolveOfflineForSensor } from "@/lib/alerts/service";
 import { readingsFromUplink } from "@/lib/ttn/readings";
 import { noteUnreadFields } from "@/lib/ttn/unread";
+import { insertReadings } from "@/lib/readings/write";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,14 +109,15 @@ export async function POST(req: NextRequest) {
     c.unitId && c.unit ? [{ channel: c.channel, unitId: c.unitId, unitType: c.unit.type }] : [],
   );
   const { readings, unmapped, noRoomTemp } = readingsFromUplink(u, mappings);
-  const inserted: { unitId: string; channel: number; tempF: number }[] = [];
-  for (const r of readings) {
-    const res = await prisma.reading.createMany({
-      data: [{ unitId: r.unitId, sensorId: sensor.id, channel: r.channel, tempF: r.tempF, probeTempF: r.probeTempF, measuredAt: u.receivedAt }],
-      skipDuplicates: true,
-    });
-    if (res.count > 0) inserted.push({ unitId: r.unitId, channel: r.channel, tempF: r.tempF });
-  }
+  // A true duplicate (same probe, same instant) is skipped; anything else that stops the write
+  // is an error and surfaces as a 500 in the log and a count in /api/health — never silence.
+  const written = await insertReadings(
+    prisma,
+    readings.map((r) => ({ unitId: r.unitId, sensorId: sensor.id, channel: r.channel, tempF: r.tempF, probeTempF: r.probeTempF, measuredAt: u.receivedAt })),
+  );
+  const inserted = readings
+    .filter((r) => written.some((w) => w.unitId === r.unitId && w.channel === r.channel))
+    .map((r) => ({ unitId: r.unitId, channel: r.channel, tempF: r.tempF }));
 
   // Alerts — after the writes. Cheap queries; notifications inside are fire-and-forget.
   await safeAlerts(async () => {

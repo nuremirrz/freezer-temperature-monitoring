@@ -24,6 +24,11 @@ Open http://localhost:3100 and sign in as `owner@qimby.test`. There is no public
 accounts are handed out by invitation, and `test:accounts` refuses to run against anything that
 is not localhost.
 
+**Every push is checked before it can reach production.** `.github/workflows/ci.yml` runs the
+types, the lint, the unit tests, the migrations on an empty Postgres, the database scenarios and
+the production build; Render deploys `main` only after all of it passes (`autoDeployTrigger:
+checksPass`). A red check means the site keeps running the previous commit.
+
 `npm test` runs the unit suites (141 tests: TTN parser, alert rules, permission matrix,
 visibility, mailer). `npm run test:integration` runs the team and district services end to end
 against a throwaway database (the script says how to start one). `npm run build` type-checks
@@ -123,8 +128,11 @@ reading, so an AC chart has two lines.
    "probe not connected" sentinels are skipped.
 3. Unknown `dev_eui` or unknown `Node_type` land in `UnknownUplink` with a reason, **200**.
    Nothing is dropped silently.
-4. One `Reading` per channel wired to a unit; duplicates (same sensor, channel and time) are
-   ignored, which is what makes replays safe. Sensor battery, rssi, `lastSeenAt` and the
+4. One `Reading` per unit wired to the sensor, written by `insertReadings`
+   (`src/lib/readings/write.ts`): a true duplicate — same sensor, channel and instant — is
+   skipped, which is what makes replays safe; **any other conflict is an error**, logged and
+   counted in `/api/health` as `writeErrors`. A blanket "skip duplicates" once hid two days of
+   lost readings behind a healthy-looking site. Sensor battery, rssi, `lastSeenAt` and the
    gateway's `lastSeenAt` are updated.
 5. Alerts are evaluated after the writes; notifications are fire-and-forget.
 

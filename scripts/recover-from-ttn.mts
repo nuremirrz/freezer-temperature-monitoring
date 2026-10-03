@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { prisma } from "../src/lib/db";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
 import { readingsFromUplink } from "../src/lib/ttn/readings";
+import { insertReadings } from "../src/lib/readings/write";
 
 /**
  * Replays uplinks from TTN's Message Storage into our database.
@@ -152,7 +153,7 @@ for (const { devEui, uplink } of parsed) {
 console.log(`\nк записи: ${rows.length} показаний${unknownDevice ? ` (пакетов от неизвестных устройств: ${unknownDevice}, они пропущены)` : ""}`);
 for (const [label, n] of [...perUnit].sort()) console.log(`  ${label.padEnd(38)} ${String(n).padStart(4)}`);
 
-const res = await prisma.reading.createMany({ data: rows, skipDuplicates: true });
+const res = { count: (await insertReadings(prisma, rows)).length };
 console.log(`\nзаписано новых: ${res.count}   уже были, пропущено: ${rows.length - res.count}`);
 
 // A reading that was already there may be missing its duct: San Bernardino's four ACs were

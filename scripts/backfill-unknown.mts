@@ -2,6 +2,7 @@ import "./load-env";
 import { prisma } from "../src/lib/db";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
 import { readingsFromUplink } from "../src/lib/ttn/readings";
+import { insertReadings } from "../src/lib/readings/write";
 
 /**
  * Turns stored raw uplinks into readings, for devices that were unknown when they arrived.
@@ -104,17 +105,14 @@ if (!confirmed) {
   process.exit(0);
 }
 
-const res = await prisma.reading.createMany({
-  data: pending.map(({ unitId, sensorId, channel, tempF, probeTempF, measuredAt }) => ({
-    unitId,
-    sensorId,
-    channel,
-    tempF,
-    probeTempF,
-    measuredAt,
-  })),
-  skipDuplicates: true,
-});
+const res = {
+  count: (
+    await insertReadings(
+      prisma,
+      pending.map(({ unitId, sensorId, channel, tempF, probeTempF, measuredAt }) => ({ unitId, sensorId, channel, tempF, probeTempF, measuredAt })),
+    )
+  ).length,
+};
 const removed = await prisma.unknownUplink.deleteMany({ where: { id: { in: [...consumed] } } });
 
 console.log(`\nЗаписано показаний: ${res.count} (дубликатов пропущено ${pending.length - res.count})`);

@@ -108,6 +108,7 @@ every unit present, status not Offline, chart filling.
 
 | Symptom | Where to look |
 | --- | --- |
+| `/api/health` says `reason: write_errors` | an insert failed for a reason other than a duplicate; the message is in `writeErrors.lastError` and the Render log. A counter behind its rows: `npm run db:sequences -- --fix` |
 | Sensors "seen" minutes ago, readings hours old | `npm run db:sequences` — a restore left the id counter behind; `--fix` |
 | A unit Offline right after wiring | its first live packet resolves it within one interval; if not, the dev_eui in the CSV is wrong |
 | Owner cannot see the restaurant | step 2 |
