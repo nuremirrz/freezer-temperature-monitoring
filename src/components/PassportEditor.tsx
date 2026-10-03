@@ -7,6 +7,7 @@ import { useLiveStore } from "@/store/useLiveStore";
 import { useMe } from "./SessionProvider";
 import { canEditPassport } from "@/lib/auth/permissions";
 import { REFRIGERANTS } from "@/lib/auth/validation";
+import UnitPhotos from "./UnitPhotos";
 
 /**
  * The unit's passport: the nameplate and, for an AC, the parts a technician would buy.
@@ -50,6 +51,7 @@ const input = "w-full rounded-lg border border-line bg-page px-3 py-2 text-sm ou
 
 export function PassportList({ unit }: { unit: UnitDetail }) {
   return (
+    <>
     <dl className="space-y-1.5 text-sm">
       {passportFields(unit).map((f) => (
         <div key={f} className="flex gap-2">
@@ -64,6 +66,8 @@ export function PassportList({ unit }: { unit: UnitDetail }) {
         </div>
       )}
     </dl>
+    <UnitPhotos unitId={unit.id} />
+    </>
   );
 }
 
@@ -123,13 +127,16 @@ function PassportModal({ unit, locationId, onClose }: { unit: UnitDetail; locati
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-panel p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-panel p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between">
           <div>
             <div className="text-lg font-semibold">Unit passport</div>
             <div className="text-xs text-muted">{unit.name} · as written on the nameplate and the parts</div>
           </div>
           <button onClick={onClose} title="Close" className="flex size-8 items-center justify-center rounded-lg text-muted hover:bg-offline-soft hover:text-ink"><X size={16} /></button>
+        </div>
+        <div className="mb-4">
+          <UnitPhotos unitId={unit.id} editable />
         </div>
         <div className="space-y-3">
           {fields.map((f) =>

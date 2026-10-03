@@ -62,7 +62,9 @@ for (const l of OTHER_LOCATIONS) {
 console.log(`организация: ${other.name}  (${otherLocs.map((l) => l.name).join(", ")})`);
 
 const locations = await prisma.location.findMany({
-  where: { organizationId: { not: other.id } },
+  // "not the other org" in SQL excludes rows with no organization at all — which on a fresh
+  // database is every restaurant — so they are asked for explicitly
+  where: { OR: [{ organizationId: null }, { organizationId: { not: other.id } }] },
   orderBy: { name: "asc" },
   select: { id: true, name: true },
 });

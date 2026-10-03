@@ -5,6 +5,7 @@ import { mailStatus } from "@/lib/auth/mailer";
 import { currentFreshness, READINGS_STALLED_AFTER_MIN } from "@/lib/alerts/freshness";
 import { unreadFieldsSeen } from "@/lib/ttn/unread";
 import { writeErrorStatus } from "@/lib/readings/write";
+import { getStorage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,8 @@ export async function GET() {
       // Measurement fields some device sends that the parser does not read — a new probe or
       // decoder. Empty is the normal state; anything here is data being thrown away.
       unreadFields: unreadFieldsSeen(),
+      // "supabase" in production once the keys are set; "off" means photo uploads are refused
+      photoStorage: getStorage().mode,
       notifications: notificationHealth(),
       // "console" means confirmation and reset links are only being printed to this log —
       // nobody can finish signing up or recover a password until a provider is configured.

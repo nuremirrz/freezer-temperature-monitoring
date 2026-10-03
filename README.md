@@ -166,6 +166,23 @@ the write watchdog and unread payload fields — that no customer should see. Se
 once per alert per 30 minutes. With `APP_URL` set each message links to the location screen.
 `npm run telegram -- --token <t>` finds the group's chat id and sends a test message.
 
+### Nameplate photos
+
+Up to five per unit. The browser does the heavy work (`src/lib/photos-client.ts`): it refuses
+anything over 10 MB, decodes HEIC (natively in Safari, with `heic2any` loaded on demand
+elsewhere), shrinks the photo to 1600 px on the long side and uploads a JPEG of a few hundred
+kilobytes, retrying a dropped connection for about a minute. The passport fields save on their
+own, so a photo on a weak signal never holds them up.
+
+The server (`src/lib/units/photos.ts`) checks reach and role like the passport, then stores the
+bytes through `src/lib/storage`: **Supabase Storage** in production — a private bucket, created
+on the first upload, with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` (a secret key, `sb_secret_…`,
+sent on the `apikey` header) — and a local folder, `.data/photos`, in development and CI. A
+production server without the keys refuses uploads (`photoStorage: "off"` in `/api/health`)
+rather than writing to Render's disk, which every deploy wipes. The browser fetches a photo from
+our own route, which checks access and then redirects to a signed link that expires in ten
+minutes. The nightly backup covers the photo rows, not the files.
+
 ### E-mail
 
 Invitations and password resets go out through **Brevo's HTTPS API** (`BREVO_API_KEY`,
@@ -184,6 +201,7 @@ days without a send.
 | `POST /api/locations`, `PATCH /api/locations/[id]` | add a restaurant; rename, re-address, close or reopen it, set its manager and technicians |
 | `GET /api/organization` | the owner's table: every restaurant, closed ones included, with who is on it |
 | `PATCH /api/units/[id]` | normal, alert and duct bands; owners and managers |
+| `GET/POST /api/units/[id]/photos`, `GET/DELETE …/photos/[photoId]` | nameplate photos, at most five per unit: list, upload (already compressed by the browser), fetch through an access check, remove |
 | `PATCH /api/units/[id]/passport` | the nameplate and the parts: model, serial, year, refrigerant, belts, capacitor, filter; every role, the technician first of all; each change leaves a `UnitChange` row |
 | `GET /api/stream` | SSE: `reading` and `alert` events plus heartbeat |
 | `GET/POST /api/team`, `/api/team/[userId]`, `…/invite`, `…/deactivate` | team management |
@@ -260,8 +278,8 @@ hours. Supabase caps the database at 500 MB; the whole history so far is a few m
 
 ## Where things stand
 
-Of the client's feature list, **Roles** is complete and deployed, and the **unit passport** is
-built except for nameplate photos (storage still to be chosen). Not yet built: technician work reports, digests to the owner, an
+Of the client's feature list, **Roles** and the **unit passport** are complete, nameplate photos
+included. Not yet built: technician work reports, digests to the owner, an
 alert-history screen (the data is there), work history, the preventive-maintenance schedule and
 the weekly report. Whittier AC2 and AC3 are deliberately unmapped until their second probes
 arrive (`npm run sensors:import` brings them back). The alert threshold is one hour for every

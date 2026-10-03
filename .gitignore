@@ -50,3 +50,6 @@ next-env.d.ts
 # keep the env template
 !.env.example
 backups/
+
+# Local stand-in for object storage (unit photos in development and CI)
+.data/

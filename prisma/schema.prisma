@@ -123,6 +123,7 @@ model User {
   access       LocationAccess[]
   districts    UserDistrict[]
   unitChanges  UnitChange[]
+  unitPhotos   UnitPhoto[]
   passportEdits Unit[] @relation("PassportUpdates")
 
   @@index([organizationId])
@@ -251,9 +252,29 @@ model Unit {
   readings Reading[]
   alerts   Alert[]
   changes  UnitChange[]
+  photos   UnitPhoto[]
 
   @@unique([locationId, name])
   @@index([locationId])
+}
+
+/// A photo of the unit's nameplate, at most five per unit. The bytes live in object storage
+/// (Supabase Storage in production, a local folder in development) under `path`; this row is
+/// what says the photo exists and who may see it — the unit's location decides that, as always.
+model UnitPhoto {
+  id          String   @id @default(cuid())
+  unitId      String
+  unit        Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  path        String   @unique
+  contentType String
+  bytes       Int
+  width       Int?
+  height      Int?
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([unitId, createdAt])
 }
 
 /// One field of a unit's passport changing hands: what it said, what it says now, who, when.

@@ -42,6 +42,8 @@ export const BACKUP_MODELS: BackupModel[] = [
   { name: "Alert", delegate: "alert", cursor: "id" },
   { name: "UnknownUplink", delegate: "unknownUplink", cursor: "id" },
   { name: "UnitChange", delegate: "unitChange", cursor: "id" },
+  // The rows only: the photos themselves live in object storage, not in the database.
+  { name: "UnitPhoto", delegate: "unitPhoto", cursor: "id" },
 ];
 
 export interface BackupMeta {

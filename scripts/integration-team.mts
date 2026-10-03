@@ -15,6 +15,11 @@ import type { Geocoder } from "../src/lib/geocode";
 import { updatePassport } from "../src/lib/units/passport";
 import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
 import { runOfflineCheck } from "../src/lib/alerts/service";
+import { addPhoto, deletePhoto, photoContent, listPhotos } from "../src/lib/units/photos";
+import { localStorage as localPhotoStorage, type ObjectStorage } from "../src/lib/storage";
+import { mkdtemp, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * Runs the team and district services end to end against a throwaway database, through every
@@ -46,7 +51,11 @@ console.log = (...a: unknown[]) => { if (!String(a[0]).startsWith("[mail]")) con
 
 // ---- clean slate: the whole database, children before parents ----
 // A throwaway database is the contract, but `prisma dev` serves one store whatever name the
-// URL carries, so the seed's equipment may be here too. Everything goes.
+// URL carries, so the seed's equipment may be here too. Everything goes — before the run, and
+// again after it, so the scenarios' restaurants never mix into a developer's local data.
+async function wipe() {
+await prisma.unitPhoto.deleteMany();
+await prisma.unitChange.deleteMany();
 await prisma.reading.deleteMany();
 await prisma.alert.deleteMany();
 await prisma.sensorChannel.deleteMany();
@@ -60,6 +69,8 @@ await prisma.user.deleteMany();
 await prisma.district.deleteMany();
 await prisma.location.deleteMany();
 await prisma.organization.deleteMany();
+}
+await wipe();
 
 // ---- seed ----
 const org = await prisma.organization.create({ data: { name: "Test Org" } });
@@ -245,6 +256,36 @@ const stranger = await mkUser("stranger@t.io", "technician");
 r = await updatePassport(await session(stranger), pUnit.id, { year: 2015 });
 check("техник без этой точки → 404", !r.ok && r.status === 404, `${r.code}`);
 
+console.log("\n=== фото шильдика ===");
+const photoDir = await mkdtemp(join(tmpdir(), "qimby-photos-"));
+const store = localPhotoStorage(photoDir);
+const jpeg = { bytes: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]), contentType: "image/jpeg", width: 1600, height: 1200 };
+const techS = await session(tech);
+r = await addPhoto(techS, pUnit.id, jpeg, store);
+check("техник добавляет фото на своей точке", r.ok, r.ok ? "" : `${r.code}`);
+const firstPhoto = r.ok ? r.data.id : "";
+const firstRow = await prisma.unitPhoto.findUniqueOrThrow({ where: { id: firstPhoto } });
+check("файл лёг в хранилище", (await stat(join(photoDir, firstRow.path))).size === jpeg.bytes.byteLength);
+for (let k = 0; k < 4; k++) await addPhoto(techS, pUnit.id, jpeg, store);
+r = await addPhoto(techS, pUnit.id, jpeg, store);
+check("шестое фото → 409", !r.ok && r.status === 409 && r.code === "too_many", r.ok ? "" : `${r.code}`);
+r = await addPhoto(techS, pUnit.id, { ...jpeg, contentType: "application/pdf" }, store);
+check("не картинка → 415", !r.ok && r.status === 415);
+r = await addPhoto(await session(stranger), pUnit.id, jpeg, store);
+check("техник без этой точки → 404", !r.ok && r.status === 404);
+r = await listPhotos(techS, pUnit.id);
+check("список: пять фото, можно править", r.ok && r.data.photos.length === 5 && r.data.canEdit);
+r = await photoContent(techS, pUnit.id, firstPhoto, store);
+check("фото отдаётся тому, кто видит юнит", r.ok && "bytes" in r.data && r.data.bytes.byteLength === jpeg.bytes.byteLength);
+r = await photoContent(await session(stranger), pUnit.id, firstPhoto, store);
+check("чужому — 404", !r.ok && r.status === 404);
+r = await deletePhoto(techS, pUnit.id, firstPhoto, store);
+const gone = await stat(join(photoDir, firstRow.path)).then(() => false, () => true);
+check("удаление убирает и запись, и файл", r.ok && gone && (await prisma.unitPhoto.count({ where: { id: firstPhoto } })) === 0);
+const off: ObjectStorage = { mode: "off", put: async () => { throw new Error("off"); }, remove: async () => {}, signedUrl: async () => null, read: async () => { throw new Error("off"); } };
+r = await addPhoto(techS, pUnit.id, jpeg, off);
+check("хранилище не настроено → 503, ничего не записано", !r.ok && r.status === 503 && r.code === "storage_off");
+
 console.log("\n=== запись показаний: дубль молча, всё остальное громко ===");
 const wSensor = await prisma.sensor.create({ data: { devEui: "A8404100000000FF", locationId: L4 } });
 const row = { unitId: pUnit.id, sensorId: wSensor.id, channel: 1, tempF: 70, probeTempF: 55, measuredAt: new Date("2026-10-03T10:00:00Z") };
@@ -321,5 +362,7 @@ check("алерт ресторана со своим чатом ушёл в эт
 check("алерт ресторана без своего чата ушёл в общую группу, а не в чужой чат", toDefault.length > 0 && toDefault.every((l) => l.startsWith("[notify] ")), said.join(" | "));
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);
+await wipe();
+console.log("база очищена; локальные данные: npx prisma db seed && npm run locations:setup && npm run test:accounts");
 await prisma.$disconnect();
 process.exit(failed ? 1 : 0);
