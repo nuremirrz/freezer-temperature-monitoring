@@ -9,6 +9,10 @@
  * Set by the client (13 Sep): "такая температура должна быть минимум час". A freezer in
  * defrost, a door held open during a delivery, an AC cycling off — all of these leave the
  * range for minutes at a time and none of them is a problem. An hour of it is.
+ *
+ * The written spec said two hours for cold storage and five for an AC; over the whole history
+ * no excursion ever lasted five, so the AC alarm would never have fired. Sanjar confirmed one
+ * hour for every unit type on 3 Oct 2026. This is the agreed number, not a deviation.
  */
 export const SUSTAINED_OUT_OF_RANGE_MIN = 60;
 /** Alert closes only once the reading is back inside the range by this margin. */
