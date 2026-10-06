@@ -1,10 +1,11 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 
 /**
  * How much of the database we are using and how fast it grows. Read-only.
  *
  *   npm run db:usage
+ *   npm run db:usage -- --prod    # the production database; asks for the URL, typed blind
  *
  * Supabase's free plan allows 500 MB and switches the database to read-only above that, which
  * for us would mean no readings written at all — the same silence as the sequence collision,
@@ -13,6 +14,10 @@ import { prisma } from "../src/lib/db";
 
 const LIMIT_MB = 500;
 const mb = (bytes: bigint | number) => Number(bytes) / 1024 / 1024;
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const [{ size }] = await prisma.$queryRawUnsafe<{ size: bigint }[]>(`SELECT pg_database_size(current_database()) AS size`);
 const tables = await prisma.$queryRawUnsafe<{ name: string; total: bigint; rows: bigint }[]>(`

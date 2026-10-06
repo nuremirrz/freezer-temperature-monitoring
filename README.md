@@ -5,8 +5,9 @@ report through The Things Network; the app stores every reading in PostgreSQL, r
 equipment stays out of range or goes quiet, notifies a Telegram group, and shows it all live to
 the people who are allowed to see it.
 
-Two restaurants are live today, BK #6816 (Norco) and BK #6399 (Whittier), eleven sensors between
-them. The app runs on Render with a Supabase Postgres behind it.
+Three restaurants are live today — BK #6816 (Norco), BK #6399 (Whittier) and BK #4808 (San
+Bernardino) — with sixteen sensors between them. The app runs on Render with a Supabase Postgres
+behind it.
 
 ## Quick start
 
@@ -225,7 +226,7 @@ rate-limited per IP and reject cross-site origins.
 | `npm run weather:backfill -- --days 365 --prod` | outdoor temperature history for every open restaurant, hourly, from Open-Meteo; safe to repeat; `--prod` asks for the production URL |
 | `npm run chart:check` | per unit: readings in the last day and week, the latest value, the duct beside the room for an AC |
 | `npm run db:sequences [-- --fix]` | the id counters against the rows they number; a restore leaves them behind |
-| `npm run db:usage` | database size against Supabase's 500 MB, biggest tables, growth per day |
+| `npm run db:usage` | database size against Supabase's 500 MB, biggest tables, growth per day; `--prod` asks for the production URL |
 | `npm run unit:detach -- --location "…" --unit "…" [--purge] --yes` | take a unit's probes off and, with --purge, forget what they wrote |
 | `npm run access:grant -- --email … --role … [--location …] [--invite]` | create or update an account, grant locations, print an invitation link |
 | `npm run org:setup -- --name "…" --owner … [--attach "…"]` | create a customer's empty organization, invite its first owner by e-mail, attach named restaurants |
