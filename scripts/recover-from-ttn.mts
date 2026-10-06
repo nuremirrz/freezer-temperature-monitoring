@@ -1,7 +1,7 @@
 import "./load-env";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked, askHidden } from "./prod-url";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
 import { readingsFromUplink } from "../src/lib/ttn/readings";
 import { insertReadings } from "../src/lib/readings/write";
@@ -12,6 +12,8 @@ import { insertReadings } from "../src/lib/readings/write";
  *   TTN_API_KEY=… npm run recover:ttn                        # fetch all TTN holds, save to disk, dry run
  *   TTN_API_KEY=… npm run recover:ttn -- --yes               # same, and write to the database
  *   npm run recover:ttn -- --load backups/ttn-….ndjson --yes  # replay a saved file, no TTN needed
+ *   npm run recover:ttn -- --prod --yes                      # against production; asks for the
+ *                                                            # TTN key and the database URL, typed blind
  *
  * For when our side was down and the webhooks fell on the floor. TTN does not retry a failed
  * webhook, but the Storage integration keeps uplinks for a while — the docs say 24 hours on the
@@ -35,7 +37,12 @@ const loadFrom = arg("--load");
 const afterArg = arg("--after");
 const before = arg("--before");
 const write = process.argv.includes("--yes");
-const KEY = process.env.TTN_API_KEY;
+// --prod first: it asks for the production URL before anything reads DATABASE_URL
+const prod = await prodIfAsked();
+// A key on the command line would land in the shell's history; a prompt that shows nothing cannot.
+const KEY =
+  process.env.TTN_API_KEY ??
+  (prod && !loadFrom ? await askHidden("Paste the TTN API key and press Enter (nothing will show): ") : undefined);
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + "Z";
 const saveTo = arg("--save") ?? `backups/ttn-uplinks-${stamp}.ndjson`;
 
@@ -129,6 +136,8 @@ if (!write) {
 }
 
 // ---- 3. map to units the way the live ingest does, and write ----
+// Imported only now: the client reads DATABASE_URL the moment it is created, and --prod sets it
+const { prisma } = await import("../src/lib/db");
 const sensors = await prisma.sensor.findMany({
   include: { channels: { include: { unit: { select: { id: true, name: true, type: true } } } }, location: { select: { name: true } } },
 });

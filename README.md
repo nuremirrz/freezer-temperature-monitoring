@@ -231,7 +231,7 @@ rate-limited per IP and reject cross-site origins.
 | `npm run org:setup -- --name "…" --owner … [--attach "…"]` | create a customer's empty organization, invite its first owner by e-mail, attach named restaurants |
 | `npm run test:accounts` | one account per role plus a second organization, local databases only |
 | `npm run db:backup` / `npm run db:restore -- --from <dir> --to <url> --yes` | copy every table to gzipped NDJSON and write it back; see [docs/backups.md](docs/backups.md) |
-| `npm run recover:ttn` / `-- --load <file> --yes` | pull uplinks TTN still holds after an outage, save them to disk, then replay them; idempotent, raises no alerts |
+| `npm run recover:ttn` / `-- --load <file> --yes` | pull uplinks TTN still holds after an outage, save them to disk, then replay them; idempotent, raises no alerts; `--prod` asks for the TTN key and the production URL, typed blind. Also fills a unit's history for the hours before its probes were wired |
 | `npm run fixture`, `npm run fixture:lht65n` | post a real captured uplink to a local ingest endpoint; flags set time and temperatures |
 | `npm run offline-check` | one pass of the offline check, for cron |
 | `npm run mail:test -- --to …` | send one real e-mail and report what the server said |
