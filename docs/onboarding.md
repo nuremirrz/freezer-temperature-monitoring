@@ -61,16 +61,17 @@ screens.
 ## 3. Map the probes
 
 Add one row per probe to `data/sensors.csv` — the file documents its own columns. For a probe
-that must stay unwired (Whittier's AC2 and AC3 until their second probes arrive) leave the
-unit column **empty**; that is what keeps a later import from re-wiring it.
+that must stay unwired (as Whittier's AC2 and AC3 were until their second probes arrived) leave
+the unit column **empty**; that is what keeps a later import from re-wiring it.
 
 ```bash
 npm run sensors:import -- --dry-run
-npm run sensors:import -- --location "Burger King #4808"
+npm run sensors:import -- --location "Burger King #4808" --prod
 ```
 
 `--location` validates the whole file but writes only that restaurant's sensors, so a new
-site cannot touch an old one. A full `sensors:import` with no `--location` rewrites every
+site cannot touch an old one. `--prod` asks for the production URL and reads it without echo;
+without it the script talks to the local database. A full `sensors:import` with no `--location` rewrites every
 mapping in the file; use it only when that is what you mean.
 
 ## 4. Bring the morning in

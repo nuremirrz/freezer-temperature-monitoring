@@ -1,7 +1,7 @@
 # Sensor-to-equipment map for the pilot. One row per probe.
 #
 # Fill this in during installation, then apply it:
-#   DATABASE_URL='<production url>' npm run sensors:import
+#   npm run sensors:import -- --location "<restaurant>" --prod     (asks for the production URL)
 #
 # location   name of the restaurant exactly as it appears in the app, e.g. Burger King #1025
 # dev_eui    16 hex characters, from the sticker on the sensor or from TTN → End devices → DevEUI
@@ -45,13 +45,12 @@ Burger King #6399,A840414CA15E2B79,bk6399-whitter-wic,LHT65N,1200,1,Walk-in Cool
 Burger King #6399,A8404171E55E2B7A,bk6399-whitter-wif,LHT65N,1200,1,Walk-in Freezer,LHT65S-NE117,Walk-in Freezer
 Burger King #6399,A84041E0555E2B7B,bk6399-whitter-ac1,LHT65N,300,1,AC1 - Kitchen,LHT65S-NE117,AC1-kitchen
 #
-# AC2 and AC3 are deliberately unwired (21 Sep 2026): both LTC2 shipped with ONE probe, and
-# channel 2 reads the inside of the device's own box, not the room. An empty unit keeps them
-# that way through every import — on 2 Oct a full import quietly re-wired them for a day.
-# When the second probes are fitted, put the unit name back (channel 2 → room, per the two-hour
-# comparison above) and run the import.
-Burger King #6399,A840413A675FAFBF,bk6399-whitter-ac2,LTC2,300,2,,LTC2-HT,AC2-kitchen
-Burger King #6399,A84041A7C15FAFBC,bk6399-whitter-ac3,LTC2,300,2,,LTC2-HT,AC3-dining
+# AC2 and AC3 were unwired from 21 Sep to 6 Oct 2026: both LTC2 had shipped with ONE probe, and
+# channel 2 read the inside of the device's own box. On 6 Oct the technician fitted the second
+# probes (channel 1 in the duct, channel 2 in the room, as above) and the units went back on.
+# To park a unit again, empty its unit column: an empty unit survives every import.
+Burger King #6399,A840413A675FAFBF,bk6399-whitter-ac2,LTC2,300,2,AC2 - Kitchen,LTC2-HT,AC2-kitchen
+Burger King #6399,A84041A7C15FAFBC,bk6399-whitter-ac3,LTC2,300,2,AC3 - Dining,LTC2-HT,AC3-dining
 
 # BK4808 San Bernardino — 935 N Waterman Ave, San Bernardino, CA 92410 (gateway a8404121147c4179, LPS8, in another TTN account)
 # Source: Sanjar, 2 Oct 2026, and the devices' own first packets (npm run sensors:unknown).

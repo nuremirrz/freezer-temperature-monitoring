@@ -220,9 +220,9 @@ rate-limited per IP and reject cross-site origins.
 
 | Command | What it does |
 | --- | --- |
-| `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it; `--location "…"` writes one restaurant's sensors only |
+| `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it; `--location "…"` writes one restaurant's sensors only; `--prod` asks for the production URL, typed blind |
 | `npm run sensors:unknown` | devices talking to us without a mapping: type, last temperatures per channel |
-| `npm run weather:backfill -- --days 365` | outdoor temperature history for every open restaurant, hourly, from Open-Meteo; safe to repeat |
+| `npm run weather:backfill -- --days 365 --prod` | outdoor temperature history for every open restaurant, hourly, from Open-Meteo; safe to repeat; `--prod` asks for the production URL |
 | `npm run chart:check` | per unit: readings in the last day and week, the latest value, the duct beside the room for an AC |
 | `npm run db:sequences [-- --fix]` | the id counters against the rows they number; a restore leaves them behind |
 | `npm run db:usage` | database size against Supabase's 500 MB, biggest tables, growth per day |
@@ -284,7 +284,6 @@ hours. Supabase caps the database at 500 MB; the whole history so far is a few m
 Of the client's feature list, **Roles** and the **unit passport** are complete, nameplate photos
 included. Not yet built: technician work reports, digests to the owner, an
 alert-history screen (the data is there), work history, the preventive-maintenance schedule and
-the weekly report. Whittier AC2 and AC3 are deliberately unmapped until their second probes
-arrive (`npm run sensors:import` brings them back). The alert threshold is one hour for every
+the weekly report. The alert threshold is one hour for every
 unit type, where the written spec says two for cold storage and five for AC; the hour came from
 the client's later message and is the safer choice for food.

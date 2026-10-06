@@ -1,6 +1,6 @@
 import "./load-env";
 import { readFileSync } from "node:fs";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 
 /**
  * Applies data/sensors.csv to the database: creates or updates each sensor and
@@ -10,6 +10,7 @@ import { prisma } from "../src/lib/db";
  *   npm run sensors:import                    # apply data/sensors.csv
  *   npm run sensors:import -- --file other.csv --dry-run
  *   npm run sensors:import -- --location "Burger King #4808"     # write that restaurant's rows only
+ *   npm run sensors:import -- --location "…" --prod               # against production; asks for the URL, typed blind
  *
  * --location validates the whole file as always but writes only the rows of one restaurant, so
  * wiring up a new site cannot touch an old one. On 2 Oct 2026 a full import quietly re-wired
@@ -34,6 +35,8 @@ const arg = (name: string) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 const dryRun = process.argv.includes("--dry-run");
+await prodIfAsked();
+const { prisma } = await import("../src/lib/db");
 const onlyLocation = arg("location")?.trim();
 const file = arg("file") ?? "data/sensors.csv";
 
