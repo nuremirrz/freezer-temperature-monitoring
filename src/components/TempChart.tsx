@@ -243,8 +243,6 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
       t: new Date(p.t).getTime(),
       tempF: p.tempF,
       probeTempF: p.probeTempF ?? null,
-      // The spread inside an averaged bucket, drawn as a band behind the line
-      band: p.min !== undefined && p.max !== undefined ? [p.min, p.max] : null,
     }));
     // The air outside joins the readings rather than standing beside them: it has its own
     // timestamps (a quarter hour apart live, an hour apart in the backfilled past), and a series
@@ -265,7 +263,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
 
   const chart = useMemo(() => {
     const real = points.filter((p): p is Exclude<typeof p, { gap: true }> => !("gap" in p));
-    const rooms = real.flatMap((p) => p.band ?? [p.tempF]);
+    const rooms = real.map((p) => p.tempF);
     const ducts = real.map((p) => p.probeTempF).filter((v): v is number => v !== null);
     const outs = isAC && shown.outside ? real.flatMap((p) => (p.outsideF !== null ? [p.outsideF] : [])) : [];
 
@@ -433,10 +431,6 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                   })
                 }
                 formatter={(v, name) => {
-                  if (name === "band") {
-                    const [lo, hi] = v as [number, number];
-                    return [`${lo}°F – ${hi}°F`, "Low – high"];
-                  }
                   if (name === "outsideF") return [`${v}°F`, "Outside"];
                   const what = name === "probeTempF" ? "From the duct" : isAC ? "In the room" : "Temperature";
                   return [`${v}°F`, bucketed ? `${what} (average)` : what];
@@ -498,19 +492,6 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
                 />
               )}
 
-              {/* The spread inside each bucket — how far the unit wandered, not only where it sat */}
-              {bucketed && showRoom && (
-                <Area
-                  type="monotone"
-                  dataKey="band"
-                  stroke="none"
-                  fill={isAC ? C.room : C.alert}
-                  fillOpacity={0.12}
-                  dot={false}
-                  activeDot={false}
-                  isAnimationActive={false}
-                />
-              )}
               {showOutside && (
                 <Area
                   type="monotone"
