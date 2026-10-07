@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { axisTicks, tickLabel, windowLabel, breakGaps, maxGapMs } from "./chart-axis";
+import { axisTicks, tickLabel, windowLabel, breakGaps, maxGapMs, sampleAt } from "./chart-axis";
 import { zonedParts } from "./tz";
 
 const LA = "America/Los_Angeles";
@@ -73,5 +73,43 @@ describe("gaps in the line", () => {
     expect(maxGapMs(30, 300)).toBe(60 * 60_000);
     expect(breakGaps([{ t: 0 }, { t: 30 * 60_000 }, { t: 90 * 60_000 }], maxGapMs(30, 300))).toHaveLength(3);
     expect(breakGaps([{ t: 0 }, { t: 30 * 60_000 }, { t: 100 * 60_000 }], maxGapMs(30, 300))).toHaveLength(4);
+  });
+});
+
+describe("a coarser series read at a finer one's moments", () => {
+  const HOUR = 3_600_000;
+  // The air outside, on the hour
+  const weather = [0, 1, 2].map((h) => ({ t: h * HOUR, v: 60 + h * 10 }));
+
+  it("gives the sample itself at a moment that falls on one", () => {
+    expect(sampleAt([0, HOUR, 2 * HOUR], weather, 2 * HOUR)).toEqual([60, 70, 80]);
+  });
+
+  it("reads between two samples rather than reusing the one before", () => {
+    // The bug this was written for: at 4 AM the chart showed 4 PM's air
+    expect(sampleAt([HOUR / 2, 1.5 * HOUR], weather, 2 * HOUR)).toEqual([65, 75]);
+  });
+
+  it("has no value before the first sample or after the last", () => {
+    expect(sampleAt([-HOUR, 3 * HOUR], weather, 2 * HOUR)).toEqual([null, null]);
+  });
+
+  it("leaves a hole across a gap in the samples instead of drawing through it", () => {
+    const withGap = [{ t: 0, v: 60 }, { t: 10 * HOUR, v: 80 }];
+    expect(sampleAt([5 * HOUR], withGap, 2 * HOUR)).toEqual([null]);
+    expect(sampleAt([5 * HOUR], withGap, 12 * HOUR)).toEqual([70]);
+  });
+
+  it("gives nothing at all when there are no samples", () => {
+    expect(sampleAt([0, HOUR], [], 2 * HOUR)).toEqual([null, null]);
+  });
+
+  it("walks a long pair of series in step, not from the start each time", () => {
+    const samples = Array.from({ length: 500 }, (_, i) => ({ t: i * HOUR, v: i }));
+    const times = Array.from({ length: 2000 }, (_, i) => i * (HOUR / 4));
+    const out = sampleAt(times, samples, 2 * HOUR);
+    expect(out[0]).toBe(0);
+    expect(out[4]).toBe(1);
+    expect(out[2]).toBe(0.5);
   });
 });

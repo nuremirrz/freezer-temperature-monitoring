@@ -91,6 +91,34 @@ export function windowLabel(from: number, to: number, tz: string): string {
   return `${start} – ${end}`;
 }
 
+/**
+ * A coarser series read at the moments of a finer one — the air outside at the moments the unit
+ * reported.
+ *
+ * Recharts pairs a tooltip with a point by its position in the array, not by its time, so a
+ * second series drawn from its own array lines up by accident at best: a day of five-minute
+ * readings beside a day of hourly weather showed 4 PM's air against 4 AM's readings. One array
+ * and one set of timestamps is the only arrangement that cannot drift.
+ *
+ * Between two samples the value is read along the line between them, which is honest for air an
+ * hour apart at worst. Across a longer gap than `maxGapMs`, or beyond the samples altogether,
+ * there is no value rather than a guess, and the line breaks there.
+ */
+export function sampleAt(times: number[], samples: { t: number; v: number }[], maxGapMs: number): (number | null)[] {
+  const out: (number | null)[] = [];
+  let i = 0;
+  for (const t of times) {
+    while (i + 1 < samples.length && samples[i + 1].t <= t) i++;
+    const a = samples[i];
+    const b = samples[i + 1];
+    if (!a || t < a.t) out.push(null);
+    else if (t === a.t) out.push(a.v);
+    else if (!b || b.t - a.t > maxGapMs) out.push(null);
+    else out.push(Math.round((a.v + ((b.v - a.v) * (t - a.t)) / (b.t - a.t)) * 10) / 10);
+  }
+  return out;
+}
+
 /** Points more than `maxGapMs` apart are not joined: a line across an outage is a lie. */
 export function breakGaps<T extends { t: number }>(points: T[], maxGapMs: number): (T | { t: number; gap: true })[] {
   const out: (T | { t: number; gap: true })[] = [];

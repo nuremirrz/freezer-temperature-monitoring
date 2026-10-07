@@ -16,7 +16,7 @@ import {
 } from "recharts";
 import { api, CHART_RANGES, ChartRange, ReadingsQuery, ReadingsResponse, UnitDetail } from "@/lib/api";
 import { useLiveStore } from "@/store/useLiveStore";
-import { axisTicks, breakGaps, maxGapMs, tickLabel, windowLabel } from "@/lib/chart-axis";
+import { axisTicks, breakGaps, maxGapMs, sampleAt, tickLabel, windowLabel } from "@/lib/chart-axis";
 import { fromLocalInput, toLocalInput, tzAbbrev } from "@/lib/tz";
 import { PRESET_HOURS } from "@/lib/readings/window";
 
@@ -246,19 +246,20 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
       // The spread inside an averaged bucket, drawn as a band behind the line
       band: p.min !== undefined && p.max !== undefined ? [p.min, p.max] : null,
     }));
-    return breakGaps(raw, maxGapMs(data.bucketMinutes, data.intervalSec));
+    // The air outside joins the readings rather than standing beside them: it has its own
+    // timestamps (a quarter hour apart live, an hour apart in the backfilled past), and a series
+    // of its own would be paired with the readings by position, which is to say by accident.
+    // Samples only spread out further when a bucket of an hour or more makes them.
+    const weatherBucket = data.bucketMinutes !== null && data.bucketMinutes >= 60 ? data.bucketMinutes : null;
+    const outside = sampleAt(
+      raw.map((p) => p.t),
+      (data.weather ?? []).map((p) => ({ t: new Date(p.t).getTime(), v: p.tempF })),
+      maxGapMs(weatherBucket, 3600),
+    );
+    return breakGaps(raw.map((p, i) => ({ ...p, outsideF: outside[i] })), maxGapMs(data.bucketMinutes, data.intervalSec));
   }, [data]);
   const hasPoints = data ? data.points.length > 0 : false;
-  // The air outside, as its own series: it has its own timestamps (a sample a quarter hour,
-  // an hour in the backfilled past) and its own gaps
-  const outside = useMemo(() => {
-    if (!data?.weather?.length) return [];
-    const raw = data.weather.map((p) => ({ t: new Date(p.t).getTime(), outsideF: p.tempF }));
-    // Samples come an hour apart in the backfilled past and a quarter hour apart live; only a
-    // bucket of an hour or more changes that spacing, so a finer readings bucket is not the rule
-    const bucket = data.bucketMinutes !== null && data.bucketMinutes >= 60 ? data.bucketMinutes : null;
-    return breakGaps(raw, maxGapMs(bucket, 3600));
-  }, [data]);
+  const hasWeather = (data?.weather?.length ?? 0) > 0;
 
   const { zones, thresholds } = useMemo(() => bandsFor(unit), [unit]);
 
@@ -266,7 +267,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     const real = points.filter((p): p is Exclude<typeof p, { gap: true }> => !("gap" in p));
     const rooms = real.flatMap((p) => p.band ?? [p.tempF]);
     const ducts = real.map((p) => p.probeTempF).filter((v): v is number => v !== null);
-    const outs = isAC && shown.outside ? outside.flatMap((p) => ("outsideF" in p ? [p.outsideF] : [])) : [];
+    const outs = isAC && shown.outside ? real.flatMap((p) => (p.outsideF !== null ? [p.outsideF] : [])) : [];
 
     if (isAC) {
       // The client's rule: a little air below the duct, a little more above the room — on whole
@@ -279,7 +280,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     }
     const base: [number, number] = unit.type === "walk_in_cooler" ? [25, 55] : [0, 40];
     return { domain: yDomain(base, rooms) };
-  }, [points, outside, shown.outside, isAC, unit.type]);
+  }, [points, shown.outside, isAC, unit.type]);
 
   // The axis spans the window asked for, not the points found: an outage at the end shows as
   // empty space, which is the truth of it
@@ -290,7 +291,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
 
   const showRoom = !isAC || shown.room;
   const showDuct = isAC && shown.duct;
-  const showOutside = isAC && shown.outside && outside.length > 0;
+  const showOutside = isAC && shown.outside && hasWeather;
 
   return (
     <div className="rounded-xl border border-line bg-panel p-3.5 md:p-4">
@@ -513,9 +514,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
               {showOutside && (
                 <Area
                   type="monotone"
-                  data={outside}
-                  dataKey={(p: (typeof outside)[number]) => ("outsideF" in p ? p.outsideF : null)}
-                  name="outsideF"
+                  dataKey="outsideF"
                   stroke={C.outside}
                   strokeWidth={1.25}
                   fill="url(#fillOutside)"
@@ -558,7 +557,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
             [
               { key: "room", label: "Room", color: C.room, available: true },
               { key: "duct", label: "Duct", color: C.duct, available: true },
-              { key: "outside", label: "Outside", color: C.outside, available: outside.length > 0 },
+              { key: "outside", label: "Outside", color: C.outside, available: hasWeather },
             ] as const
           ).map((s) => {
             const on = shown[s.key];
