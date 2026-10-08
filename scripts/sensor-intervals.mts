@@ -1,11 +1,12 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 import { offlineAfterSec } from "../src/lib/alerts/rules";
 
 /**
  * Compares how often each sensor actually reports against how often we expect it to.
  *
  *   npm run sensors:intervals
+ *   npm run sensors:intervals -- --prod    # the production database; asks for the URL, typed blind
  *
  * The expected figure comes from data/sensors.csv and drives one thing only: when a sensor
  * counts as offline (3 × interval + 60 s). It does not configure the device — the device's
@@ -21,6 +22,10 @@ import { offlineAfterSec } from "../src/lib/alerts/rules";
  */
 
 const SAMPLE = 30;
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const sensors = await prisma.sensor.findMany({
   include: { location: true },
