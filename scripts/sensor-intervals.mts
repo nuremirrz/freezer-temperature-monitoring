@@ -17,8 +17,11 @@ import { offlineAfterSec } from "../src/lib/alerts/rules";
  * every 20 minutes for two days, 137 of them, because we expected 5. Expect too rarely and a
  * genuinely dead sensor goes unnoticed for hours.
  *
- * The observed figure is the median gap over recent readings — a median so one lost packet
- * does not double the answer.
+ * The observed figure is the median gap between recent uplinks — a median so one lost packet
+ * does not double the answer. Between uplinks, not between rows: a device with two probes wired
+ * to two units writes two readings at the same instant, and counting that pair as a gap of zero
+ * put the median at zero and the verdict at a tick. San Bernardino's walk-in sensor, the only
+ * such device, flooded the Telegram group for a day while this script called it healthy.
  */
 
 const SAMPLE = 30;
@@ -41,8 +44,10 @@ for (const s of sensors) {
   const rows = await prisma.reading.findMany({
     where: { sensorId: s.id },
     orderBy: { measuredAt: "desc" },
-    take: SAMPLE,
+    // Two probes on one device share an instant, so ask for enough rows to hold SAMPLE uplinks
+    take: SAMPLE * 2,
     select: { measuredAt: true },
+    distinct: ["measuredAt"],
   });
   if (rows.length < 5) {
     console.log(`${(s.ttnDeviceId ?? s.devEui).padEnd(22)}${s.location.name.slice(-4).padEnd(10)}— мало данных`);
