@@ -147,10 +147,16 @@ the uplinks for a while, and `npm run recover:ttn` pulls them back (below).
 - **Temp out of range** opens after the reading has stayed outside the alert band for
   **60 minutes** (`SUSTAINED_OUT_OF_RANGE_MIN`, the client's "минимум час") and tracks
   `peakTempF`. It closes with a **2 °F hysteresis** on the violated side.
-- **Offline**: a sensor silent for more than **3 × `expectedIntervalSec` + 60 s** (16 min for a
-  5-minute device) gets an offline alert per mapped unit. When every sensor at a location is
-  silent, one location-wide notification goes out instead of many, because that is the gateway
-  or the restaurant's internet, not a probe. The alert resolves as soon as the sensor reports.
+- **Offline**: a sensor silent for more than **3 × `expectedIntervalSec` + 60 s, and never less
+  than 30 minutes** (so 30 min for a 5-minute device, 61 min for a 20-minute one) gets an offline
+  alert per mapped unit. The floor is there because losing a packet or three in a row is ordinary
+  on this radio network — measured over a day, one restaurant's sensor lost three in a row sixteen
+  times — and the bare 3 × rule turned each of those into an alert. When every sensor at a
+  location is silent, one location-wide notification goes out instead of many, because that is the
+  gateway or the restaurant's internet, not a probe. The alert resolves as soon as the sensor
+  reports. A sensor that goes down, comes back and goes down again within half an hour is one
+  episode: the alerts are all recorded, but only the first is announced, and a recovery is
+  announced only if the outage was.
 - Unit status is derived, never stored: open temp alert → `alert`; open offline alert or no
   reading ever → `offline`; else `normal`. Location status is the worst of its units.
 

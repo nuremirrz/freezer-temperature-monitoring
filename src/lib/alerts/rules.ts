@@ -122,11 +122,22 @@ export function evaluateTempReading(e: TempEvaluation): TempDecision {
 }
 
 /**
- * Offline threshold for a sensor: three missed uplinks plus a minute of slack.
- * 300 s → 960 s (16 min), 120 s → 420 s (7 min).
+ * Never call a sensor silent before this, however often it is expected.
+ *
+ * Losing a packet or three in a row is ordinary on this radio network: measured over a day in
+ * October 2026, Norco dropped one at a time, Whittier two, and San Bernardino's walk-in sensor
+ * lost three in a row sixteen times. At a five-minute interval three losses are twenty minutes
+ * of silence and the old threshold was sixteen, so every one of them became a false alert.
+ * Thirty minutes is what the client's AC spec asks for and what the measurements support.
+ */
+export const MIN_OFFLINE_SEC = 30 * 60;
+
+/**
+ * Offline threshold for a sensor: three missed uplinks plus a minute of slack, but never less
+ * than half an hour. 300 s → 1800 s (30 min), 1200 s → 3660 s (61 min).
  */
 export function offlineAfterSec(expectedIntervalSec: number = DEFAULT_EXPECTED_INTERVAL_SEC): number {
-  return 3 * expectedIntervalSec + 60;
+  return Math.max(3 * expectedIntervalSec + 60, MIN_OFFLINE_SEC);
 }
 
 export function isSensorOffline(

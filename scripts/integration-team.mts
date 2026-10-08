@@ -18,7 +18,7 @@ import { resolveWindow } from "../src/lib/readings/window";
 import { readingSeries, weatherSeries } from "../src/lib/readings/series";
 import { insertWeather, sampleWeather, backfillWeather } from "../src/lib/weather/store";
 import { zonedParts } from "../src/lib/tz";
-import { runOfflineCheck } from "../src/lib/alerts/service";
+import { runOfflineCheck, resolveOfflineForSensor } from "../src/lib/alerts/service";
 import { addPhoto, deletePhoto, photoContent, listPhotos } from "../src/lib/units/photos";
 import { localStorage as localPhotoStorage, type ObjectStorage } from "../src/lib/storage";
 import { mkdtemp, stat } from "node:fs/promises";
@@ -440,6 +440,66 @@ const toChatOrg = said.filter((l) => l.includes("Chat Org Restaurant"));
 const toDefault = said.filter((l) => l.includes("Default Chat Restaurant"));
 check("алерт ресторана со своим чатом ушёл в этот чат", toChatOrg.length > 0 && toChatOrg.every((l) => l.startsWith("[notify → -1009990001]")), said.join(" | "));
 check("алерт ресторана без своего чата ушёл в общую группу, а не в чужой чат", toDefault.length > 0 && toDefault.every((l) => l.startsWith("[notify] ")), said.join(" | "));
+
+console.log("\n=== мигающий датчик: одно сообщение на эпизод, не на каждый цикл ===");
+// San Bernardino's walk-in sensor lost three packets in a row sixteen times in one day. Each
+// silence opened an alert, the next uplink closed it, and the group got sixteen red messages
+// and no green ones. One episode must cost one red and one green.
+const flapLoc = await prisma.location.create({ data: { name: "Flap Restaurant", address: "1", city: "X", state: "CA", zip: "90000", lat: 0, lng: 0, organizationId: org.id } });
+const flapUnit = await prisma.unit.create({ data: { locationId: flapLoc.id, type: "walk_in_freezer", name: "WIF", rangeMinF: 0, rangeMaxF: 10 } });
+const flapSensor = await prisma.sensor.create({ data: { devEui: "A8404100000000F1", locationId: flapLoc.id, expectedIntervalSec: 300 } });
+await prisma.sensorChannel.create({ data: { sensorId: flapSensor.id, channel: 1, unitId: flapUnit.id } });
+// A second restaurant in the same organization, always healthy, so this one is never "location-wide"
+const quietSensor = await prisma.sensor.create({ data: { devEui: "A8404100000000F2", locationId: flapLoc.id, expectedIntervalSec: 300, lastSeenAt: new Date() } });
+const quietUnit = await prisma.unit.create({ data: { locationId: flapLoc.id, type: "walk_in_cooler", name: "WIC", rangeMinF: 33, rangeMaxF: 41 } });
+await prisma.sensorChannel.create({ data: { sensorId: quietSensor.id, channel: 1, unitId: quietUnit.id } });
+
+const heard: string[] = [];
+const realLog = console.log;
+const listen = () => { console.log = (...a: unknown[]) => { const line = String(a[0]); if (line.startsWith("[notify")) heard.push(line); else realLog(...a); }; };
+const stop = async () => { await new Promise((res) => setTimeout(res, 300)); console.log = realLog; };
+const mine = () => heard.filter((l) => l.includes("Flap Restaurant"));
+const silentFor = (min: number) => prisma.sensor.update({ where: { id: flapSensor.id }, data: { lastSeenAt: new Date(Date.now() - min * 60_000) } });
+
+// 20 минут тишины — три потерянных пакета подряд. Раньше это была тревога, теперь нет.
+await silentFor(20);
+listen();
+await runOfflineCheck();
+await stop();
+check("три потерянных пакета подряд больше не тревога", mine().length === 0 && (await prisma.alert.count({ where: { unitId: flapUnit.id, type: "offline" } })) === 0, mine().join(" | "));
+
+// 35 минут — настоящая тишина, одно красное сообщение
+await silentFor(35);
+listen();
+await runOfflineCheck();
+await stop();
+check("полчаса тишины — тревога и одно сообщение", mine().length === 1 && mine()[0].includes("WIF"), mine().join(" | "));
+
+// Датчик отозвался: одно зелёное
+heard.length = 0;
+await prisma.sensor.update({ where: { id: flapSensor.id }, data: { lastSeenAt: new Date() } });
+listen();
+await resolveOfflineForSensor(flapSensor.id);
+await stop();
+check("вернулся — одно зелёное сообщение", mine().length === 1, mine().join(" | "));
+
+// И снова пропал в пределах получаса: тревога пишется, сообщение не уходит
+heard.length = 0;
+await silentFor(35);
+listen();
+await runOfflineCheck();
+await stop();
+const reopened = await prisma.alert.count({ where: { unitId: flapUnit.id, type: "offline", resolvedAt: null } });
+check("повторный провал в пределах получаса — тревога есть, сообщения нет", mine().length === 0 && reopened === 1, mine().join(" | "));
+
+// Его возвращение тоже молчит: мы не говорили, что он пропал
+heard.length = 0;
+await prisma.sensor.update({ where: { id: flapSensor.id }, data: { lastSeenAt: new Date() } });
+listen();
+await resolveOfflineForSensor(flapSensor.id);
+await stop();
+check("о чём не сообщали, о том и не отчитываемся", mine().length === 0, mine().join(" | "));
+check("в истории при этом остались обе тревоги", (await prisma.alert.count({ where: { unitId: flapUnit.id, type: "offline" } })) === 2);
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);
 await wipe();

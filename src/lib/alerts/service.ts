@@ -14,6 +14,7 @@ import {
   canNotify,
   fullyOfflineLocations,
   offlineAfterSec,
+  NOTIFY_COOLDOWN_MIN,
 } from "./rules";
 
 /**
@@ -263,7 +264,10 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
   if (!open.length) return;
 
   const silentSince = open.reduce((min, a) => (a.openedAt < min ? a.openedAt : min), open[0].openedAt);
-  const shouldNotify = open.some((a) => canNotify(a.lastNotifiedAt, now));
+  // Say a sensor is back only if we said it was gone. A flapping sensor opens alerts that are
+  // never announced (see runOfflineCheck), and announcing their recoveries would be the same
+  // flood in green.
+  const shouldNotify = open.some((a) => a.lastNotifiedAt !== null);
 
   await prisma.alert.updateMany({
     where: { id: { in: open.map((a) => a.id) } },
@@ -343,6 +347,14 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
   const downLocations = fullyOfflineLocations(states);
   const openOffline = await prisma.alert.findMany({ where: { type: "offline", resolvedAt: null } });
   const openByUnit = new Map(openOffline.map((a) => [a.unitId, a]));
+  // Down, up, down again is one episode, not a message every cycle. San Bernardino's walk-in
+  // sensor lost three packets in a row sixteen times in a day; the group got sixteen messages
+  // about a sensor that was working. The alert is still recorded — only the message is held.
+  const justResolved = await prisma.alert.findMany({
+    where: { type: "offline", resolvedAt: { gte: new Date(now.getTime() - NOTIFY_COOLDOWN_MIN * 60_000) } },
+    select: { unitId: true },
+  });
+  const flapping = new Set(justResolved.map((a) => a.unitId));
 
   const result: OfflineCheckResult = {
     checkedSensors: sensors.length,
@@ -362,8 +374,9 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
       if (!missing.length) continue;
 
       const locationWide = downLocations.has(sensor.locationId);
+      const settled = missing.every((u) => !flapping.has(u.id));
       // Location-wide: one message per location per check; per-sensor otherwise
-      const willNotify = locationWide ? !locationNotified.has(sensor.locationId) : true;
+      const willNotify = settled && (locationWide ? !locationNotified.has(sensor.locationId) : true);
       if (locationWide && willNotify) locationNotified.add(sensor.locationId);
 
       const created = await Promise.all(

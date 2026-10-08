@@ -338,7 +338,8 @@ model Sensor {
   /// External probe (TempF_TMP117) — supply air for an AC. Kept even where it is not what
   /// the unit is judged on, so no number the sensor reported is thrown away.
   probeTempF          Float?
-  /// How often the device is configured to uplink. Offline threshold = 3 × interval + 60 s.
+  /// How often the device is configured to uplink. Offline threshold = 3 × interval + 60 s,
+  /// never under 30 min (losing two or three packets in a row is ordinary on this network).
   expectedIntervalSec Int       @default(300)
   lastSeenAt          DateTime? @db.Timestamptz(6)
 

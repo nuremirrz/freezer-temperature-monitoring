@@ -155,25 +155,31 @@ describe("offline", () => {
   const now = new Date("2026-09-09T12:00:00Z");
   const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000);
 
-  it("threshold is three missed uplinks plus a minute", () => {
-    expect(offlineAfterSec()).toBe(960); // 5-minute devices → 16 min
-    expect(offlineAfterSec(300)).toBe(960);
-    expect(offlineAfterSec(120)).toBe(420); // 2-minute devices → 7 min
+  it("is three missed uplinks plus a minute once that passes half an hour", () => {
+    expect(offlineAfterSec(1200)).toBe(3660); // 20-minute devices → 61 min
+    expect(offlineAfterSec(900)).toBe(2760); // 15-minute devices → 46 min
   });
 
-  it("5-minute device: online within 16 minutes, offline after", () => {
+  it("never falls below half an hour, however often the device is expected", () => {
+    // Three losses in a row are ordinary here; at five minutes that is 20 minutes of silence,
+    // and the old 16-minute threshold turned every one of them into a false alert
+    expect(offlineAfterSec()).toBe(1800);
+    expect(offlineAfterSec(300)).toBe(1800);
+    expect(offlineAfterSec(120)).toBe(1800);
+  });
+
+  it("5-minute device: three lost packets are not an outage, half an hour is", () => {
     expect(isSensorOffline(minutesAgo(5), now)).toBe(false);
-    expect(isSensorOffline(minutesAgo(15), now)).toBe(false);
-    expect(isSensorOffline(minutesAgo(16), now)).toBe(false);
-    expect(isSensorOffline(minutesAgo(17), now)).toBe(true);
+    expect(isSensorOffline(minutesAgo(20), now)).toBe(false); // the San Bernardino case
+    expect(isSensorOffline(minutesAgo(30), now)).toBe(false);
+    expect(isSensorOffline(minutesAgo(31), now)).toBe(true);
   });
 
-  it("2-minute device: online within 7 minutes, offline after", () => {
-    const t = offlineAfterSec(120);
-    expect(isSensorOffline(minutesAgo(6), now, t)).toBe(false);
-    expect(isSensorOffline(minutesAgo(7), now, t)).toBe(false);
-    expect(isSensorOffline(minutesAgo(8), now, t)).toBe(true);
-    expect(isSensorOffline(minutesAgo(8), now)).toBe(false); // same silence is fine for a 5-minute device
+  it("20-minute device keeps its own, longer threshold", () => {
+    const t = offlineAfterSec(1200);
+    expect(isSensorOffline(minutesAgo(40), now, t)).toBe(false); // one lost packet, seen at Whittier
+    expect(isSensorOffline(minutesAgo(61), now, t)).toBe(false);
+    expect(isSensorOffline(minutesAgo(62), now, t)).toBe(true);
   });
 
   it("a sensor that has never reported is offline", () => {
