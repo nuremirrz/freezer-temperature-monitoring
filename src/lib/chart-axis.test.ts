@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { axisTicks, tickLabel, windowLabel, breakGaps, maxGapMs, sampleAt } from "./chart-axis";
+import { axisTicks, tickLabel, windowLabel, breakGaps, maxGapMs, medianGapMs, sampleAt } from "./chart-axis";
 import { zonedParts } from "./tz";
 
 const LA = "America/Los_Angeles";
@@ -111,5 +111,44 @@ describe("a coarser series read at a finer one's moments", () => {
     expect(out[0]).toBe(0);
     expect(out[4]).toBe(1);
     expect(out[2]).toBe(0.5);
+  });
+});
+
+describe("how far apart points may be before the line breaks", () => {
+  const M = 60_000;
+  const every = (min: number, n: number) => Array.from({ length: n }, (_, i) => i * min * M);
+
+  it("reads the step from the series, not from what the database was told", () => {
+    // The San Bernardino case: the device moved to 20 minutes, the record still said 5
+    expect(medianGapMs(every(20, 10))).toBe(20 * M);
+    expect(maxGapMs(null, 300, medianGapMs(every(20, 10)))).toBe(61 * M);
+    // Without it, every pair was a gap and the chart drew nothing
+    expect(maxGapMs(null, 300)).toBe(16 * M);
+  });
+
+  it("is not thrown off by a few missing uplinks", () => {
+    const times = [0, 5, 10, 35, 40, 45, 50, 55].map((m) => m * M);
+    expect(medianGapMs(times)).toBe(5 * M);
+    expect(maxGapMs(null, 300, medianGapMs(times))).toBe(16 * M);
+  });
+
+  it("falls back to the recorded interval when there is too little to go on", () => {
+    expect(medianGapMs([0, 5 * M, 10 * M])).toBeNull();
+    expect(maxGapMs(null, 300, medianGapMs([0, 5 * M, 10 * M]))).toBe(16 * M);
+  });
+
+  it("leaves averaged series on the bucket, where an empty bucket is the hole", () => {
+    expect(maxGapMs(30, 300, 30 * M)).toBe(60 * M);
+    expect(maxGapMs(120, 300, null)).toBe(240 * M);
+  });
+
+  it("draws an unbroken line for a 20-minute device, and still breaks a real outage", () => {
+    // Six steps of 20 minutes, then two hours of silence — an outage even for this device
+    const times = [0, 20, 40, 60, 80, 100, 220].map((m) => m * M);
+    const limit = maxGapMs(null, 300, medianGapMs(times));
+    expect(limit).toBe(61 * M);
+    const out = breakGaps(times.map((t) => ({ t })), limit);
+    expect(out).toHaveLength(times.length + 1); // one break, and only one
+    expect(out[6]).toEqual({ t: 100 * M + 1, gap: true });
   });
 });

@@ -61,5 +61,9 @@ Burger King #4808,A8404122A3634EA6,bk4808-san-bernardino-ac1-dining,LHT65N,300,1
 Burger King #4808,A840416860634EA4,bk4808-san-bernardino-ac2-dining,LHT65N,300,1,AC2 - Dining,LHT65N-NE117,AC2-dining
 Burger King #4808,A84041AFA0620098,bk4808-san-bernardino-ac3-kitchen,LHT65N,300,1,AC3 - Kitchen,LHT65N-NE117,AC3-kitchen
 Burger King #4808,A840415391634EA3,bk4808-san-bernardino-ac4-kitchen,LHT65N,300,1,AC4 - Kitchen,LHT65N-NE117,AC4-kitchen
-Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,300,1,Walk-in Freezer,LTC2-HT,wic-f ch1 freezer
-Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,300,2,Walk-in Cooler,LTC2-HT,wic-f ch2 cooler
+# The walk-in sensor moved from a five-minute step to a twenty-minute one between 8 and 10 Oct
+# 2026, on its own — the same step the walk-in sensors at the other two restaurants keep. At 300
+# it was called offline on every single missed packet; 1200 puts the threshold at 61 minutes,
+# which two missed packets still fit inside. If it ever goes back, sensors:intervals will say so.
+Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,1200,1,Walk-in Freezer,LTC2-HT,wic-f ch1 freezer
+Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,1200,2,Walk-in Cooler,LTC2-HT,wic-f ch2 cooler

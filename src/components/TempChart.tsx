@@ -16,7 +16,7 @@ import {
 } from "recharts";
 import { api, CHART_RANGES, ChartRange, ReadingsQuery, ReadingsResponse, UnitDetail } from "@/lib/api";
 import { useLiveStore } from "@/store/useLiveStore";
-import { axisTicks, breakGaps, maxGapMs, sampleAt, tickLabel, windowLabel } from "@/lib/chart-axis";
+import { axisTicks, breakGaps, maxGapMs, medianGapMs, sampleAt, tickLabel, windowLabel } from "@/lib/chart-axis";
 import { fromLocalInput, toLocalInput, tzAbbrev } from "@/lib/tz";
 import { PRESET_HOURS } from "@/lib/readings/window";
 
@@ -249,12 +249,16 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     // of its own would be paired with the readings by position, which is to say by accident.
     // Samples only spread out further when a bucket of an hour or more makes them.
     const weatherBucket = data.bucketMinutes !== null && data.bucketMinutes >= 60 ? data.bucketMinutes : null;
+    const weather = (data.weather ?? []).map((p) => ({ t: new Date(p.t).getTime(), v: p.tempF }));
     const outside = sampleAt(
       raw.map((p) => p.t),
-      (data.weather ?? []).map((p) => ({ t: new Date(p.t).getTime(), v: p.tempF })),
-      maxGapMs(weatherBucket, 3600),
+      weather,
+      maxGapMs(weatherBucket, 3600, medianGapMs(weather.map((p) => p.t))),
     );
-    return breakGaps(raw.map((p, i) => ({ ...p, outsideF: outside[i] })), maxGapMs(data.bucketMinutes, data.intervalSec));
+    // The step this device actually keeps, not the one recorded against it: a sensor that
+    // changes its pace has to keep drawing a line rather than disappear
+    const step = medianGapMs(raw.map((p) => p.t));
+    return breakGaps(raw.map((p, i) => ({ ...p, outsideF: outside[i] })), maxGapMs(data.bucketMinutes, data.intervalSec, step));
   }, [data]);
   const hasPoints = data ? data.points.length > 0 : false;
   const hasWeather = (data?.weather?.length ?? 0) > 0;

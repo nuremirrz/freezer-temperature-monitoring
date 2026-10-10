@@ -129,12 +129,35 @@ export function breakGaps<T extends { t: number }>(points: T[], maxGapMs: number
   return out;
 }
 
-/** How far apart two neighbouring points may be before the line breaks between them. */
-export function maxGapMs(bucketMinutes: number | null, intervalSec: number): number {
-  // Raw: an uplink missed is noise; three in a row is an outage — the same yardstick as "Offline"
-  if (bucketMinutes === null) return 3 * intervalSec * 1000 + 60_000;
+/** Enough points that the middle gap means something rather than describing an accident. */
+const ENOUGH_FOR_MEDIAN = 6;
+
+/**
+ * How far apart the points in this series usually are, as the series itself shows it; null
+ * when there are too few to tell.
+ */
+export function medianGapMs(times: number[]): number | null {
+  if (times.length < ENOUGH_FOR_MEDIAN) return null;
+  const gaps: number[] = [];
+  for (let i = 1; i < times.length; i++) gaps.push(times[i] - times[i - 1]);
+  gaps.sort((a, b) => a - b);
+  return gaps[gaps.length >> 1];
+}
+
+/**
+ * How far apart two neighbouring points may be before the line breaks between them.
+ *
+ * Measured from how the device actually reports (`observedGapMs`) rather than from the interval
+ * recorded against it, because that recording goes out of date and the chart must not. On
+ * 10 Oct 2026 San Bernardino's walk-in sensor moved from a five-minute step to a twenty-minute
+ * one while the database still said five: every pair of points was then "a gap", every segment
+ * broke, and with no dots drawn the chart went blank while the readings were arriving fine.
+ */
+export function maxGapMs(bucketMinutes: number | null, intervalSec: number, observedGapMs: number | null = null): number {
   // Averaged: an empty bucket between two full ones is a hole worth showing
-  return 2 * bucketMinutes * 60_000;
+  if (bucketMinutes !== null) return 2 * bucketMinutes * 60_000;
+  // Raw: one uplink missed is noise, three in a row is an outage — the yardstick "Offline" uses
+  return 3 * (observedGapMs ?? intervalSec * 1000) + 60_000;
 }
 
 export { tzOffsetMs };
