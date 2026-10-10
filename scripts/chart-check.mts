@@ -1,5 +1,5 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 
 /**
  * What the unit chart would find, unit by unit: how many readings the last day and the last
@@ -7,7 +7,12 @@ import { prisma } from "../src/lib/db";
  * it separates "nothing was recorded" from "something was recorded and is not drawn".
  *
  *   npm run chart:check
+ *   npm run chart:check -- --prod    # the production database; asks for the URL, typed blind
  */
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const units = await prisma.unit.findMany({
   where: { location: { deactivatedAt: null } },
