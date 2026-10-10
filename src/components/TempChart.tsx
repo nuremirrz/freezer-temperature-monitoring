@@ -17,6 +17,8 @@ import {
 import { api, CHART_RANGES, ChartRange, ReadingsQuery, ReadingsResponse, UnitDetail } from "@/lib/api";
 import { useLiveStore } from "@/store/useLiveStore";
 import { axisTicks, breakGaps, maxGapMs, medianGapMs, sampleAt, tickLabel, windowLabel } from "@/lib/chart-axis";
+import { chartNotices } from "@/lib/chart-notices";
+import { AlertTriangle } from "lucide-react";
 import { fromLocalInput, toLocalInput, tzAbbrev } from "@/lib/tz";
 import { PRESET_HOURS } from "@/lib/readings/window";
 
@@ -260,6 +262,30 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
     const step = medianGapMs(raw.map((p) => p.t));
     return breakGaps(raw.map((p, i) => ({ ...p, outsideF: outside[i] })), maxGapMs(data.bucketMinutes, data.intervalSec, step));
   }, [data]);
+
+  // What the chart cannot say with a line: empty, cut short, holed, or drawn from a device
+  // reporting at a pace nobody recorded. Judged by the same numbers the line is drawn with.
+  const notices = useMemo(() => {
+    if (!data) return [];
+    const times = data.points.map((p) => new Date(p.t).getTime());
+    const step = medianGapMs(times);
+    // A live window ends at the server's "now", which is steadier than the browser's and is
+    // already in the answer — reading the clock here would make this render impure
+    const to = new Date(data.to).getTime();
+    return chartNotices({
+      times,
+      from: new Date(data.from).getTime(),
+      to,
+      live: data.live,
+      bucketMinutes: data.bucketMinutes,
+      intervalSec: data.intervalSec,
+      observedGapMs: step,
+      maxGapMs: maxGapMs(data.bucketMinutes, data.intervalSec, step),
+      firstReadingAt: data.firstReadingAt ? new Date(data.firstReadingAt).getTime() : null,
+      timeZone,
+      now: to,
+    }).slice(0, 2);
+  }, [data, timeZone]);
   const hasPoints = data ? data.points.length > 0 : false;
   const hasWeather = (data?.weather?.length ?? 0) > 0;
 
@@ -313,6 +339,13 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
               <span className="text-faint"> · {tzAbbrev(custom.to, timeZone)}</span>
             </div>
           )}
+          {/* When there is no line, the middle of the chart carries the message instead */}
+          {hasPoints && notices.map((n) => (
+            <div key={n.kind} className="mt-1 flex items-center gap-1.5 text-xs font-normal text-warn">
+              <AlertTriangle size={13} aria-hidden className="shrink-0" />
+              <span>{n.text}</span>
+            </div>
+          ))}
         </div>
         <div className="relative">
           <div className="flex overflow-hidden rounded-lg border border-line text-xs font-medium">
@@ -358,7 +391,7 @@ export default function TempChart({ unit, timeZone }: { unit: UnitDetail; timeZo
 
         {!loading && !error && data && !hasPoints && (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center">
-            <div className="text-sm text-muted">No readings in this period</div>
+            <div className="text-sm text-muted">{notices[0]?.text ?? "No readings in this period"}</div>
             <div className="text-xs text-faint">
               {custom ? "Nothing was recorded between these times" : "The chart fills in as uplinks arrive"}
             </div>

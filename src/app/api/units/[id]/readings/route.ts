@@ -47,9 +47,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   }
 
   const tz = unit.location.timezone;
-  const [points, weather] = await Promise.all([
+  const [points, weather, oldest] = await Promise.all([
     readingSeries(prisma, id, w, tz),
     unit.type === "ac" ? weatherSeries(prisma, unit.locationId, w, tz) : Promise.resolve([]),
+    // The chart says "nothing older exists" rather than leaving an empty left edge unexplained
+    prisma.reading.findFirst({ where: { unitId: id }, orderBy: { measuredAt: "asc" }, select: { measuredAt: true } }),
   ]);
   return NextResponse.json({
     unitId: id,
@@ -60,6 +62,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     bucketMinutes: w.bucketMinutes,
     timeZone: unit.location.timezone,
     intervalSec: unit.channels[0]?.sensor.expectedIntervalSec ?? 300,
+    firstReadingAt: oldest?.measuredAt.toISOString() ?? null,
     type: unit.type,
     rangeMinF: unit.rangeMinF,
     rangeMaxF: unit.rangeMaxF,
