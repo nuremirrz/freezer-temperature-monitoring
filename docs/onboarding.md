@@ -41,7 +41,7 @@ geocoder gives the coordinates — `src/lib/geocode.ts` has the call), timezone,
 inventory sheet names one, and the units with the standard bands. Then:
 
 ```bash
-npm run locations:setup
+npm run locations:setup -- --prod
 ```
 
 Idempotent: existing restaurants are left alone, their ranges untouched. The script ends by
@@ -51,7 +51,7 @@ warning to skip.**
 ## 2. Put it in the owner's organization
 
 ```bash
-npm run org:setup -- --name "Main org" --attach "Burger King #4808"
+npm run org:setup -- --prod --name "Main org" --attach "Burger King #4808"
 ```
 
 Without this the owner cannot see the restaurant; only Qimby's team and anyone granted it
@@ -66,7 +66,7 @@ the unit column **empty**; that is what keeps a later import from re-wiring it.
 
 ```bash
 npm run sensors:import -- --dry-run
-npm run sensors:import -- --location "Burger King #4808" --prod
+npm run sensors:import -- --prod --location "Burger King #4808"
 ```
 
 `--location` validates the whole file but writes only that restaurant's sensors, so a new
@@ -98,7 +98,7 @@ Technicians and managers are placed on the restaurant from the owner's table
 (**Restaurants & people**) or, for someone who predates it:
 
 ```bash
-npm run access:grant -- --email tech@example.com --location "Burger King #4808"
+npm run access:grant -- --prod --email tech@example.com --location "Burger King #4808"
 ```
 
 ## 6. Prove it

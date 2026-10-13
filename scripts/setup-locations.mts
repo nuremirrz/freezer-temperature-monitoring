@@ -1,5 +1,5 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 import type { UnitType } from "../src/generated/prisma/client";
 
 /**
@@ -30,6 +30,10 @@ import type { UnitType } from "../src/generated/prisma/client";
  * The duct's 56 °F is the client's number, from the chart spec of 13 Sep. It is drawn as a line
  * on the AC chart and decides nothing: supply air above it means the unit is not cooling.
  */
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
+
 interface UnitSeed {
   name: string;
   type: UnitType;
@@ -125,6 +129,31 @@ const LOCATIONS: LocationSeed[] = [
       { name: "AC2 - Dining", ...AC_DINING },
       { name: "AC3 - Kitchen", ...AC_KITCHEN },
       { name: "AC4 - Kitchen", ...AC_KITCHEN },
+    ],
+  },
+  {
+    name: "Burger King #835",
+    address: "3747 Rosecrans St",
+    city: "San Diego",
+    state: "CA",
+    zip: "92110",
+    // Census geocoder, 13 Oct 2026: 3747 ROSECRANS ST, SAN DIEGO, CA, 92110
+    lat: 32.7521797,
+    lng: -117.2038661,
+    timezone: "America/Los_Angeles",
+    // "Qimby units list (3).xlsx", sheet Gateway (13 Oct 2026), LPS8N.
+    gateway: { ttnGatewayId: "a8404120d5d84150", eui: "A8404120D5D84150" },
+    // Five sensors (13 Oct 2026): four LHT65N on the ACs and one LTC2-LT with both probes used.
+    // The first packets settle which channel is which — channel 1 read 36 °F and channel 2
+    // 6.5 °F, so channel 1 is the cooler and channel 2 the freezer, the opposite of #4808.
+    // The ACs are numbered 1, 2, 3 and 5 on the client's sheet; 4 is absent there too.
+    units: [
+      { name: "Walk-in Cooler", ...COOLER },
+      { name: "Walk-in Freezer", ...FREEZER },
+      { name: "AC1 - Kitchen", ...AC_KITCHEN },
+      { name: "AC2 - Kitchen", ...AC_KITCHEN },
+      { name: "AC3 - Dining", ...AC_DINING },
+      { name: "AC5 - Dining", ...AC_DINING },
     ],
   },
 ];

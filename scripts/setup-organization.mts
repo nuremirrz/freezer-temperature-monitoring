@@ -1,6 +1,6 @@
 import "./load-env";
 import { randomBytes } from "node:crypto";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 import { hashPassword } from "../src/lib/auth/password";
 import { generateToken } from "../src/lib/auth/tokens";
 import { sendMail, mailerMode } from "../src/lib/auth/mailer";
@@ -37,6 +37,10 @@ import { INVITE_TTL_MS } from "../src/lib/auth/team";
  * an owner already invited is invited again only with --resend. An owner who is already active
  * needs nothing from here.
  */
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const argv = process.argv.slice(2);
 const flag = (n: string) => { const i = argv.indexOf(`--${n}`); return i > -1 ? argv[i + 1]?.trim() : undefined; };

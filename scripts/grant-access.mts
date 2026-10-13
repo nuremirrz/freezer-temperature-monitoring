@@ -1,5 +1,5 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 import { hashPassword } from "../src/lib/auth/password";
 import { generateToken } from "../src/lib/auth/tokens";
 import { randomBytes } from "node:crypto";
@@ -27,6 +27,10 @@ import { randomBytes } from "node:crypto";
  * ourselves: no e-mail is sent and none needs to arrive, which matters while there is still
  * no mail provider configured.
  */
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const argv = process.argv.slice(2);
 const flag = (name: string) => {

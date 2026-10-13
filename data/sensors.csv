@@ -67,3 +67,18 @@ Burger King #4808,A840415391634EA3,bk4808-san-bernardino-ac4-kitchen,LHT65N,300,
 # which two missed packets still fit inside. If it ever goes back, sensors:intervals will say so.
 Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,1200,1,Walk-in Freezer,LTC2-HT,wic-f ch1 freezer
 Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,1200,2,Walk-in Cooler,LTC2-HT,wic-f ch2 cooler
+#
+# BK835 Rosecrans San Diego — 3747 Rosecrans St, San Diego, CA 92110 (gateway A8404120D5D84150, LPS8N)
+# Source: "Qimby units list (3).xlsx", sheet Sensors, 13 Oct 2026.
+#
+# Channels are the opposite way round from San Bernardino, and the first packets say so rather
+# than the sheet: channel 1 read 36.3 °F and channel 2 read 6.5 °F, so 1 is the cooler and 2 the
+# freezer. The device is our old bench unit draginotst2 under a new name — same dev_eui.
+# Five minutes, not the twenty the other restaurants' walk-ins keep: 48 packets in 3 h 50 min.
+Burger King #835,A84041784362379C,bk835-rosecrans-sd-wic-f,LTC2,300,1,Walk-in Cooler,LTC2-LT,wic-f ch1 cooler
+Burger King #835,A84041784362379C,bk835-rosecrans-sd-wic-f,LTC2,300,2,Walk-in Freezer,LTC2-LT,wic-f ch2 freezer
+# The client's sheet numbers the air conditioners 1, 2, 3 and 5 — there is no AC4 on it.
+Burger King #835,A84041DE816251AF,bk835-rosecrans-sd-ac1-kitchen,LHT65N,300,1,AC1 - Kitchen,LHT65N,AC1-kitchen
+Burger King #835,A84041CA1A634EA5,bk835-rosecrans-sd-ac2-kitchen,LHT65N,300,1,AC2 - Kitchen,LHT65N,AC2-kitchen
+Burger King #835,A84041699F6251B0,bk835-rosecrans-sd-ac3-dining,LHT65N,300,1,AC3 - Dining,LHT65N,AC3-dining
+Burger King #835,A8404158B3634EA7,bk835-rosecrans-sd-ac5-dinning,LHT65N,300,1,AC5 - Dining,LHT65N,AC5-dining
