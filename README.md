@@ -228,7 +228,7 @@ rate-limited per IP and reject cross-site origins.
 | Command | What it does |
 | --- | --- |
 | `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it; `--location "…"` writes one restaurant's sensors only; `--prod` asks for the production URL, typed blind |
-| `npm run sensors:unknown` | devices talking to us without a mapping: type, last temperatures per channel |
+| `npm run sensors:unknown` | devices talking to us without a mapping: type, last temperatures per channel; `--prod` asks for the production URL |
 | `npm run weather:backfill -- --days 365 --prod` | outdoor temperature history for every open restaurant, hourly, from Open-Meteo; safe to repeat; `--prod` asks for the production URL |
 | `npm run sensors:intervals` | gaps between uplinks over the last 24 h: the usual one, the worst one, and how many crossed the offline threshold. A threshold at or below the usual step means a false alert every cycle; a worst gap above it means one false alert per dropout. `--prod` asks for the production URL |
 | `npm run chart:check` | per unit: readings in the last day and week, the latest value, the duct beside the room for an AC |

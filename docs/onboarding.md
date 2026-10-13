@@ -4,9 +4,9 @@ The order matters, and every step has a check. Skipping the checks is how San Be
 a day without duct readings, an hour invisible to its owner, and six offline alerts for
 nothing — all on 2 Oct 2026, all avoidable.
 
-Every command below runs from this repository against production. Paste the production URL
-into the terminal once (`read -rs SUPABASE_URL && export SUPABASE_URL`) and prefix each command
-with `DATABASE_URL="$SUPABASE_URL"`. The URL is never written to a file.
+Every command below runs from this repository against production. Each one takes `--prod`,
+which asks for the production URL and reads it without echo — the URL is never written to a
+file, never shown on screen and never lands in the shell's history.
 
 ## 0. Before touching anything: what is the hardware saying?
 
@@ -14,7 +14,7 @@ The installers register the devices in TTN under our application, so their packe
 arriving before we have done anything. They land in `UnknownUplink`; nothing is lost.
 
 ```bash
-npm run sensors:unknown
+npm run sensors:unknown -- --prod
 ```
 
 For every unmapped device this prints the type (`LTC2` or `LHT65N`), the per-channel
@@ -77,12 +77,20 @@ mapping in the file; use it only when that is what you mean.
 ## 4. Bring the morning in
 
 ```bash
-npm run backfill:unknown -- --yes
+npm run backfill:unknown -- --prod                               # dry run: what it would recover
+npm run backfill:unknown -- --prod --since 2026-10-12T22:30Z --yes
 ```
 
 Turns the stored raw packets into readings, through the same rule as the live path, and
 marks each sensor as heard so the offline check does not open alerts for devices that were
 talking all along. Readings raised this way open no alerts.
+
+**Check where the packets start before you write.** A device that was somewhere else before it
+was installed carries that somewhere else in its history: San Diego's walk-in sensor spent weeks
+on our bench as `draginotst2`, reporting room temperature, and replaying all of it would have
+written bench readings into a freezer's chart and raised alerts on them. `--since` keeps only
+what came after the install and forgets the rest, so a later run cannot resurrect it. The dry
+run lists both: what will be recovered and what will be forgotten, with the dates.
 
 ## 5. People
 

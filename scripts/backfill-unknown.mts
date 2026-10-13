@@ -1,5 +1,5 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
 import { readingsFromUplink } from "../src/lib/ttn/readings";
 import { insertReadings } from "../src/lib/readings/write";
@@ -7,8 +7,10 @@ import { insertReadings } from "../src/lib/readings/write";
 /**
  * Turns stored raw uplinks into readings, for devices that were unknown when they arrived.
  *
- *   npm run backfill:unknown              # dry run — says what it would recover
+ *   npm run backfill:unknown                               # dry run — says what it would recover
  *   npm run backfill:unknown -- --yes
+ *   npm run backfill:unknown -- --since 2026-10-12T22:30Z   # and forget whatever came before
+ *   npm run backfill:unknown -- --prod                      # production; asks for the URL, typed blind
  *
  * A sensor that reports before anyone has mapped it is not lost: the whole payload goes to
  * UnknownUplink and the ingest answers 200 so TTN does not retry. This reads those rows back
@@ -20,7 +22,26 @@ import { insertReadings } from "../src/lib/readings/write";
  * anyway.
  */
 
+/**
+ * `--since` is for a device that lived somewhere else before it was installed. San Diego's
+ * walk-in sensor spent weeks on our bench as `draginotst2`, reporting room temperature into
+ * UnknownUplink; replaying all of that would write bench readings into a freezer's history and
+ * raise alerts on them. Packets older than the cutoff are forgotten rather than left behind,
+ * so a later run without the flag cannot resurrect them.
+ */
 const confirmed = process.argv.includes("--yes");
+const sinceArg = (() => {
+  const i = process.argv.indexOf("--since");
+  return i > -1 ? process.argv[i + 1] : undefined;
+})();
+const since = sinceArg ? Date.parse(sinceArg) : null;
+if (sinceArg && !Number.isFinite(since)) {
+  console.error(`--since не похоже на время: ${sinceArg}`);
+  process.exit(2);
+}
+
+await prodIfAsked();
+const { prisma } = await import("../src/lib/db");
 
 const known = await prisma.sensor.findMany({
   include: { channels: { include: { unit: { select: { id: true, name: true, type: true } } } }, location: true },
@@ -45,11 +66,24 @@ interface Pending {
 const pending: Pending[] = [];
 const skipped = new Map<string, number>();
 const consumed = new Set<number>();
+/** Known device, but from before the cutoff: not history, and not worth keeping. */
+const stale = new Map<string, { n: number; first: Date; last: Date }>();
+const toForget = new Set<number>();
 
 for (const row of rows) {
   const sensor = byEui.get(row.devEui);
   if (!sensor) {
     skipped.set(row.devEui, (skipped.get(row.devEui) ?? 0) + 1);
+    continue;
+  }
+  if (since !== null && row.receivedAt.getTime() < since) {
+    const seen = stale.get(row.devEui);
+    stale.set(row.devEui, {
+      n: (seen?.n ?? 0) + 1,
+      first: seen?.first ?? row.receivedAt,
+      last: row.receivedAt,
+    });
+    toForget.add(row.id);
     continue;
   }
   const parsed = parseTtnUplink(row.payload, row.receivedAt);
@@ -94,6 +128,15 @@ for (const [key, ps] of [...byUnit].sort()) {
   );
 }
 
+if (stale.size) {
+  const when = new Date(since!).toISOString().slice(0, 16).replace("T", " ");
+  console.log(`\nбудет забыто как снятое до ${when} UTC:`);
+  for (const [eui, s] of [...stale].sort((a, b) => b[1].n - a[1].n)) {
+    const span = `${s.first.toISOString().slice(5, 16)} → ${s.last.toISOString().slice(5, 16)}`;
+    console.log(`  ${eui} ×${s.n}  ${span}`);
+  }
+}
+
 if (skipped.size) {
   console.log(`\nоставлено как есть (устройство всё ещё неизвестно):`);
   for (const [eui, n] of [...skipped].sort((a, b) => b[1] - a[1])) console.log(`  ${eui} ×${n}`);
@@ -114,9 +157,13 @@ const res = {
   ).length,
 };
 const removed = await prisma.unknownUplink.deleteMany({ where: { id: { in: [...consumed] } } });
+const forgotten = toForget.size
+  ? (await prisma.unknownUplink.deleteMany({ where: { id: { in: [...toForget] } } })).count
+  : 0;
 
 console.log(`\nЗаписано показаний: ${res.count} (дубликатов пропущено ${pending.length - res.count})`);
 console.log(`Сырых пакетов разобрано и убрано: ${removed.count}`);
+if (forgotten) console.log(`Забыто как снятое до отсечки: ${forgotten}`);
 
 // A sensor that was unknown has never been "seen" as far as the offline check knows, and a
 // freshly wired restaurant would open an offline alert per unit until each device's next

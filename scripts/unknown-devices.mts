@@ -1,5 +1,5 @@
 import "./load-env";
-import { prisma } from "../src/lib/db";
+import { prodIfAsked } from "./prod-url";
 import { parseTtnUplink } from "../src/lib/ttn/parse";
 
 /**
@@ -9,7 +9,12 @@ import { parseTtnUplink } from "../src/lib/ttn/parse";
  * is answered by the numbers rather than guessed.
  *
  *   npm run sensors:unknown
+ *   npm run sensors:unknown -- --prod    # the production database; asks for the URL, typed blind
  */
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const rows = await prisma.unknownUplink.groupBy({
   by: ["devEui"],
