@@ -17,7 +17,7 @@ import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
 import { resolveWindow } from "../src/lib/readings/window";
 import { readingSeries, weatherSeries } from "../src/lib/readings/series";
 import { insertWeather, sampleWeather, backfillWeather } from "../src/lib/weather/store";
-import { zonedParts, zonedToUtcMs } from "../src/lib/tz";
+import { zonedParts, zonedToUtcMs, addZonedDays } from "../src/lib/tz";
 import { runOfflineCheck, resolveOfflineForSensor, processNewReading } from "../src/lib/alerts/service";
 import { addPhoto, deletePhoto, photoContent, listPhotos } from "../src/lib/units/photos";
 import { localStorage as localPhotoStorage, type ObjectStorage } from "../src/lib/storage";
@@ -561,6 +561,18 @@ check("снова холодит — тревога закрыта и одно �
 acHeard.length = 0;
 await feed(acUnit.id, laAt(14, 10), laAt(14, 30), 5, 84, 82);
 check("сразу после восстановления тревога не возвращается", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 0, acMine().join(" | "));
+
+// Сломался днём — и остаётся красным всю ночь, до утра
+await clearAc();
+await feed(acUnit.id, laAt(13, 15), laAt(14, 0), 5, 84, 82);
+check("тревога открыта днём", (await openOn(acUnit.id, "not_cooling")) === 1);
+acHeard.length = 0;
+const night = new Date(addZonedDays(laAt(1, 0).getTime(), 1, LA));
+await prisma.reading.create({ data: { unitId: acUnit.id, sensorId: acSensor.id, channel: 1, tempF: 68, probeTempF: 67, measuredAt: night } });
+acListen();
+await processNewReading({ unitId: acUnit.id, sensorId: acSensor.id, channel: 1, tempF: 68, measuredAt: night });
+await acStop();
+check("закрытие ресторана не закрывает тревогу", (await openOn(acUnit.id, "not_cooling")) === 1 && acMine().length === 0, acMine().join(" | "));
 
 // Ночью не судим вообще
 await clearAc();

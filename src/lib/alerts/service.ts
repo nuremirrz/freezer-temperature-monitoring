@@ -267,12 +267,10 @@ async function processTempReading(unit: UnitWithLocation, reading: NewReading, n
  * history the rule needs, and a restart or a missed uplink cannot leave a half-counted run
  * behind. At a five-minute pace that window is about thirty-six rows.
  *
- * One thing here is an assumption rather than an instruction, and it is deliberate. Sanjar
- * said closed hours leave a unit Normal, and the rule follows that: a reading taken while the
- * restaurant is shut ends a run, and an open alert closes at midnight. Taken literally that
- * also means a unit still broken at closing time is announced as recovered — which is why the
- * closing message says "ресторан закрылся" instead of "снова холодит", and why this is written
- * down to be confirmed rather than quietly reinterpreted.
+ * Closing time is not a recovery. A reading taken while the restaurant is shut ends a run, so
+ * nothing new is raised overnight and the count never carries across the night — but an alert
+ * already open stays open until a reading actually shows the unit working. A unit that broke
+ * during the day is still red at half past seven, for whoever opens up (Sanjar, 14 Oct 2026).
  */
 async function processCoolingReading(unit: UnitWithLocation, reading: NewReading, now: Date): Promise<void> {
   const openAlert = await prisma.alert.findFirst({

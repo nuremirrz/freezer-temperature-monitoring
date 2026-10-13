@@ -154,14 +154,14 @@ describe("the message about an air conditioner that stopped cooling", () => {
     expect(text).not.toContain("снова холодит");
   });
 
-  it("does not claim a unit is cooling when the restaurant simply closed", () => {
+  it("does not claim a unit is cooling when it merely switched to heat", () => {
     const text = formatAlertMessage({
       ...NOT_COOLING,
       kind: "resolved",
-      substatus: "closed",
+      substatus: "heating",
       durationMin: 240,
     });
-    expect(text).toContain("больше не в аварии — ресторан закрылся. Длилось 4 ч");
+    expect(text).toContain("больше не в аварии — переключился на тепло. Длилось 4 ч");
     expect(text).not.toContain("снова холодит");
   });
 

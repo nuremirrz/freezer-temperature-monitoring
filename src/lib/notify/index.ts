@@ -131,14 +131,14 @@ export function formatAlertMessage(n: AlertNotification): string {
     if (n.substatus === "cooling") {
       return `🟢 ${loc} · ${n.unitName}: снова холодит — ${[room, duct, drop].filter(Boolean).join(", ")}. ${lasted}${link}`;
     }
+    // Closing time never resolves one of these, so there is no "ресторан закрылся" wording here
+    // on purpose: an alert that outlives the day is still an alert in the morning.
     const because =
       n.substatus === "no-load"
         ? `в помещении стало прохладно, ${room}`
-        : n.substatus === "closed"
-          ? "ресторан закрылся"
-          : n.substatus === "heating"
-            ? "переключился на тепло"
-            : room;
+        : n.substatus === "heating"
+          ? "переключился на тепло"
+          : room;
     return `🟢 ${loc} · ${n.unitName}: больше не в аварии — ${because}. ${lasted}${link}`;
   }
 

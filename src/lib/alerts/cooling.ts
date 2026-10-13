@@ -59,11 +59,30 @@ export type CoolingSubstatus =
   /** The room is warm and the duct is not cold. This is the fault that opens an alert. */
   | "not-cooling";
 
-/** The substatuses that count as the unit being fine, and so end a run. */
-const NORMAL: ReadonlySet<CoolingSubstatus> = new Set<CoolingSubstatus>(["closed", "no-load", "cooling", "heating"]);
+/**
+ * What ends a run of failures: the unit was seen to be fine, or was not being judged at all.
+ * Closed hours belong here — we were not watching, so the count cannot carry across the night.
+ */
+const ENDS_RUN: ReadonlySet<CoolingSubstatus> = new Set<CoolingSubstatus>(["closed", "no-load", "cooling", "heating"]);
 
-export function isNormalSubstatus(s: CoolingSubstatus): boolean {
-  return NORMAL.has(s);
+/**
+ * What closes an alert that is already open — and closing hours are deliberately not among them.
+ *
+ * The two sets differ by that one entry, and the difference is Sanjar's, 14 Oct 2026: a unit
+ * that broke during the day keeps its alert through the night and is still red in the morning.
+ * The alternative was worse in both directions — it would have announced a recovery nobody
+ * earned at midnight, and hidden a dead compressor from whoever opens up at half past seven.
+ *
+ * Not judging a closed restaurant and forgetting what we already found are different things.
+ */
+const RESOLVES: ReadonlySet<CoolingSubstatus> = new Set<CoolingSubstatus>(["no-load", "cooling", "heating"]);
+
+export function endsRun(s: CoolingSubstatus): boolean {
+  return ENDS_RUN.has(s);
+}
+
+export function resolvesAlert(s: CoolingSubstatus): boolean {
+  return RESOLVES.has(s);
 }
 
 /** Open from 07:30 local to midnight. The zone is the restaurant's, never the server's. */
@@ -138,7 +157,7 @@ export function notCoolingRun(readings: CoolingReading[], ctx: CoolingContext): 
   let startedAt = newest.measuredAt;
   for (let i = readings.length - 2; i >= 0; i--) {
     const s = substatusOf(readings[i], ctx);
-    if (isNormalSubstatus(s)) break;
+    if (endsRun(s)) break;
     if (s === "not-cooling") startedAt = readings[i].measuredAt;
   }
   return { startedAt, minutes: (newest.measuredAt - startedAt) / 60_000 };
@@ -159,22 +178,19 @@ export interface CoolingEvaluation {
 /**
  * What to do about the reading that just arrived.
  *
- * An open alert closes on the first normal reading, with no margin around the twelve degrees —
- * the forty-five minute run is the damping. A unit hovering at the boundary cannot flap: every
- * reopen costs another three quarters of an hour of continuous failure, which is exactly the
- * guard a hysteresis band would have bought, without a second invented number.
+ * An open alert closes on the first reading that shows the unit working, with no margin around
+ * the twelve degrees — the forty-five minute run is the damping. A unit hovering at the boundary
+ * cannot flap: every reopen costs another three quarters of an hour of continuous failure, which
+ * is exactly the guard a hysteresis band would have bought, without a second invented number.
  *
- * A closed restaurant closes an open alert too, because a closed-hours reading is a normal one
- * (Sanjar, 14 Oct: "в нерабочее время просто оставляем нормал"). See the note in service.ts on
- * what that means for a unit still broken at midnight — it is the one place this spec and
- * plain sense pull apart, and it is flagged rather than decided.
+ * Closing time does not close an alert; see RESOLVES above.
  */
 export function evaluateCooling(e: CoolingEvaluation): CoolingDecision {
   const newest = e.readings[e.readings.length - 1];
   const substatus = newest ? substatusOf(newest, e.ctx) : "no-duct";
 
   if (e.openAlert) {
-    return isNormalSubstatus(substatus) ? { action: "close", substatus } : { action: "none", substatus };
+    return resolvesAlert(substatus) ? { action: "close", substatus } : { action: "none", substatus };
   }
 
   const run = notCoolingRun(e.readings, e.ctx);

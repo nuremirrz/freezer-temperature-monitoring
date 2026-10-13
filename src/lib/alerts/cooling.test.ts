@@ -230,6 +230,36 @@ describe("the decision", () => {
     });
   });
 
+  it("does not close an alert when the restaurant shuts for the night", () => {
+    // The unit broke during the day and is still broken; closing time is not a recovery, and
+    // whoever opens up at half past seven should find it red.
+    const readings = [{ ...BROKEN, measuredAt: Date.parse("2026-10-15T01:00:00-07:00") }];
+    expect(evaluateCooling({ readings, ctx: KITCHEN, openAlert: { openedAt: at("20:00") } })).toEqual({
+      action: "none",
+      substatus: "closed",
+    });
+  });
+
+  it("keeps an alert open overnight even when the closed room has cooled right down", () => {
+    // 3 a.m., nobody cooking, the room is cold on its own — that says nothing about the unit
+    const readings = [{ tempF: 68, probeTempF: 67, measuredAt: Date.parse("2026-10-15T03:00:00-07:00") }];
+    expect(evaluateCooling({ readings, ctx: KITCHEN, openAlert: { openedAt: at("20:00") } })).toEqual({
+      action: "none",
+      substatus: "closed",
+    });
+  });
+
+  it("still refuses to start a new count across the night", () => {
+    // Not judging a closed restaurant and forgetting what we found are different things: the
+    // alert survives the night, an unfinished count does not.
+    const readings = [
+      ...series("23:50", 3, 5, BROKEN),
+      { ...BROKEN, measuredAt: Date.parse("2026-10-15T03:00:00-07:00") },
+      ...series("07:50", 3, 5, BROKEN).map((r) => ({ ...r, measuredAt: r.measuredAt + 86_400_000 })),
+    ];
+    expect(evaluateCooling({ readings, ctx: KITCHEN, openAlert: null }).action).toBe("none");
+  });
+
   it("cannot reopen immediately after closing — the next run has to run its course", () => {
     // One working reading at 15:00 closed the alert; ten minutes of failure is not enough
     const readings = [{ ...WORKING, measuredAt: at("15:00") }, ...series("15:10", 3, 5, BROKEN)];
