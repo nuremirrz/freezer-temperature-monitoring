@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tempReadout, formatTemp } from "./api";
+import { tempReadout, formatTemp, isTroubleLevel, isOutOfRange } from "./api";
 
 /**
  * The client's table, as written on 16 Sep. Two things these pin down: the colour must never
@@ -9,7 +9,8 @@ import { tempReadout, formatTemp } from "./api";
 
 const FREEZER = { type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 } as const;
 const COOLER = { type: "walk_in_cooler", rangeMinF: 33, rangeMaxF: 40, alertMinF: 33, alertMaxF: 50 } as const;
-const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 75, alertMinF: 65, alertMaxF: 80 } as const;
+// Dining was raised from 75 to 77 on 14 Oct 2026; see scripts/setup-locations.mts.
+const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 77, alertMinF: 65, alertMaxF: 80 } as const;
 const AC_KITCHEN = { type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85 } as const;
 
 const level = (t: number, u: Parameters<typeof tempReadout>[1]) => tempReadout(t, u).level;
@@ -40,29 +41,48 @@ describe("cooler", () => {
   });
 });
 
+/**
+ * An AC's room temperature used to be coloured by these bands, the way a freezer's is. It is
+ * not any more: the unit is judged by the drop across its duct, so the room is a fact about
+ * the weather and the kitchen, not a verdict on the equipment. Painting it would show a
+ * warning with no alert behind it — Sanjar asked for the number without the colour on
+ * 14 Oct 2026, and these cases are what that decision looks like.
+ */
 describe("AC", () => {
-  it("dining is green 65-75, amber to 80, red past it", () => {
-    expect(level(64, AC_DINING)).toBe("critical");
-    expect(tempReadout(64, AC_DINING).note).toBe("Below normal");
-    expect(level(65, AC_DINING)).toBe("normal");
-    expect(level(75, AC_DINING)).toBe("normal");
-    expect(level(76, AC_DINING)).toBe("warning");
-    expect(level(80, AC_DINING)).toBe("warning");
-    expect(level(81, AC_DINING)).toBe("critical");
+  it("has no verdict painted on its room temperature, at any reading", () => {
+    for (const t of [60, 64, 70, 78, 84, 99]) {
+      expect(level(t, AC_DINING)).toBe("unjudged");
+      expect(level(t, AC_KITCHEN)).toBe("unjudged");
+    }
   });
 
-  it("kitchen is allowed to run warmer than dining", () => {
-    expect(level(78, AC_KITCHEN)).toBe("normal");
-    expect(level(78, AC_DINING)).toBe("warning");
-    expect(level(84, AC_KITCHEN)).toBe("warning");
-    expect(level(86, AC_KITCHEN)).toBe("critical");
+  it("says nothing under the number either, so the card cannot contradict itself", () => {
+    expect(tempReadout(64, AC_DINING).note).toBeNull();
+    expect(tempReadout(99, AC_KITCHEN).note).toBeNull();
+  });
+
+  it("is never reported as out of range on the room, however hot the room gets", () => {
+    // The bands have not gone anywhere — the chart still paints them and the cooling rule
+    // still reads rangeMaxF as the point from which a unit is expected to be working. What
+    // changed is that the room no longer passes judgement, and this is the thing that would
+    // have put an amber warning on a card with no alert behind it.
+    expect(isOutOfRange(99, AC_KITCHEN)).toBe(false);
+    expect(isOutOfRange(60, AC_DINING)).toBe(false);
+    expect(isOutOfRange(99, COOLER)).toBe(true);
+  });
+});
+
+describe("isTroubleLevel", () => {
+  it("counts the two levels that mean trouble, and neither normal nor unjudged", () => {
+    expect([isTroubleLevel("warning"), isTroubleLevel("critical")]).toEqual([true, true]);
+    expect([isTroubleLevel("normal"), isTroubleLevel("unjudged")]).toEqual([false, false]);
   });
 });
 
 describe("the number and its colour agree", () => {
   it("judges what is displayed, not what was measured", () => {
-    expect(formatTemp(64.6)).toBe("65°F");
-    expect(level(64.6, AC_DINING)).toBe("normal");
+    expect(formatTemp(40.4)).toBe("40°F");
+    expect(level(40.4, COOLER)).toBe("normal");
     expect(formatTemp(10.4)).toBe("10°F");
     expect(level(10.4, FREEZER)).toBe("normal");
   });

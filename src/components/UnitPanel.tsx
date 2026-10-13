@@ -21,6 +21,7 @@ import {
   formatTemp,
   tempReadout,
   TEMP_LEVEL_CLASS,
+  isTroubleLevel,
   formatDuration,
   formatAge,
   formatLocalTime,
@@ -77,7 +78,7 @@ export default function UnitPanel({ loc, unit }: { loc: LocationDetail; unit: Un
     ? tempReadout(unit.lastReading.tempF, unit)
     : ({ level: "normal", note: null } as const);
   const level = readout.level;
-  const outOfRange = level !== "normal";
+  const outOfRange = isTroubleLevel(level);
   const isAC = unit.type === "ac";
 
   return (

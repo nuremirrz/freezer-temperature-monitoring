@@ -291,7 +291,11 @@ export function formatTemp(tempF: number): string {
   return `${Math.round(tempF)}°F`;
 }
 
-export type TempLevel = "normal" | "warning" | "critical";
+/**
+ * `unjudged` is an air conditioner's room temperature: a real number that decides nothing, so
+ * it is shown without a verdict painted on it. See tempReadout.
+ */
+export type TempLevel = "normal" | "warning" | "critical" | "unjudged";
 
 export interface TempReadout {
   level: TempLevel;
@@ -308,6 +312,13 @@ export interface TempReadout {
  *
  * Judged on the *rounded* number, because that is the number beside it: 67.6 °F shows as "68"
  * and colouring it red under a 68–80 range makes the screen argue with itself.
+ *
+ * An air conditioner is the exception, and deliberately so. It is no longer judged by the room
+ * at all but by the drop across its duct (src/lib/alerts/cooling.ts), so a room over the band
+ * is not a fault: on a 100 °F afternoon a healthy unit cannot hold 80 °F in a kitchen. Painting
+ * that number red would put a warning on the card with no alert behind it, and somebody would
+ * ring about it. The number stays — the client asked for the room, not the difference — and it
+ * reads as plain text. Sanjar, 14 Oct 2026.
  */
 export function tempReadout(
   tempF: number,
@@ -319,6 +330,8 @@ export function tempReadout(
     alertMaxF?: number | null;
   },
 ): TempReadout {
+  if (u.type === "ac") return { level: "unjudged", note: null };
+
   const t = Math.round(tempF);
   const alertLo = u.alertMinF ?? u.rangeMinF;
   const alertHi = u.alertMaxF ?? u.rangeMaxF;
@@ -344,14 +357,20 @@ export const TEMP_LEVEL_CLASS: Record<TempLevel, string> = {
   normal: "text-ok",
   warning: "text-warn",
   critical: "text-alert",
+  unjudged: "text-ink",
 };
+
+/** The two levels that mean something is wrong. `unjudged` is not one of them, and nor is normal. */
+export function isTroubleLevel(level: TempLevel): boolean {
+  return level === "warning" || level === "critical";
+}
 
 /** Convenience for the places that only care whether the number has left the normal band. */
 export function isOutOfRange(
   tempF: number,
   u: { rangeMinF: number; rangeMaxF: number; alertMinF?: number | null; alertMaxF?: number | null },
 ): boolean {
-  return tempReadout(tempF, u).level !== "normal";
+  return isTroubleLevel(tempReadout(tempF, u).level);
 }
 
 /** "2h 45m", or "dd:hh:mm" once it exceeds a day. */

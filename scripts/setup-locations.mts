@@ -25,7 +25,15 @@ import type { UnitType } from "../src/generated/prisma/client";
  * Warning: a freezer in defrost, an AC that just cycled off.
  *
  * A freezer's low alert sits out of reach on purpose — it cannot be too cold. A kitchen is
- * allowed to run warmer than a dining room, 80 against 75.
+ * allowed to run warmer than a dining room, 80 against 77.
+ *
+ * The dining room was 75 until 14 Oct 2026. The client's card of 16 Sep said 75 and contradicted
+ * itself elsewhere (its colour table and its range list had kitchen and dining swapped; see
+ * commit d0dba60, where the colour table won). The AC alert spec then asked for "80(77)", and
+ * 77 °F is exactly 25 °C — the number had been written in Celsius. Sanjar confirmed 77 for the
+ * dining room on 14 Oct. For an AC this number now does double duty: it is the top of the band
+ * the chart paints, and the room temperature from which the unit is expected to be cooling
+ * (src/lib/alerts/cooling.ts).
  *
  * The duct's 56 °F is the client's number, from the chart spec of 13 Sep. It is drawn as a line
  * on the AC chart and decides nothing: supply air above it means the unit is not cooling.
@@ -51,7 +59,7 @@ interface UnitSeed {
 const COOLER = { type: "walk_in_cooler", rangeMinF: 33, rangeMaxF: 40, alertMinF: 33, alertMaxF: 50 } as const;
 const FREEZER = { type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 } as const;
 const AC_KITCHEN = { type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85, probeMinF: 50, probeMaxF: 56 } as const;
-const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 75, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 56 } as const;
+const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 77, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 56 } as const;
 
 interface LocationSeed {
   name: string;
