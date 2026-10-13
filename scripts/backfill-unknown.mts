@@ -11,6 +11,7 @@ import { insertReadings } from "../src/lib/readings/write";
  *   npm run backfill:unknown -- --yes
  *   npm run backfill:unknown -- --since 2026-10-12T22:30Z   # and forget whatever came before
  *   npm run backfill:unknown -- --prod                      # production; asks for the URL, typed blind
+ *   npm run backfill:unknown -- --prod --trace A8404178…    # every packet of one device, to pick the cutoff
  *
  * A sensor that reports before anyone has mapped it is not lost: the whole payload goes to
  * UnknownUplink and the ingest answers 200 so TTN does not retry. This reads those rows back
@@ -35,6 +36,11 @@ const sinceArg = (() => {
   return i > -1 ? process.argv[i + 1] : undefined;
 })();
 const since = sinceArg ? Date.parse(sinceArg) : null;
+/** Read-only: print one device's packets so the cutoff is chosen by looking, not by guessing. */
+const traceArg = (() => {
+  const i = process.argv.indexOf("--trace");
+  return i > -1 ? process.argv[i + 1]?.toUpperCase() : undefined;
+})();
 if (sinceArg && !Number.isFinite(since)) {
   console.error(`--since не похоже на время: ${sinceArg}`);
   process.exit(2);
@@ -116,6 +122,23 @@ const byUnit = new Map<string, Pending[]>();
 for (const p of pending) {
   const key = `${p.location} · ${p.unitName}`;
   byUnit.set(key, [...(byUnit.get(key) ?? []), p]);
+}
+
+if (traceArg) {
+  const rows = await prisma.unknownUplink.findMany({
+    where: { devEui: traceArg },
+    orderBy: { receivedAt: "asc" },
+    select: { receivedAt: true, payload: true },
+  });
+  console.log(`\nпакеты ${traceArg}: ${rows.length}`);
+  for (const row of rows) {
+    const p = parseTtnUplink(row.payload, row.receivedAt);
+    const what = p.ok
+      ? p.uplink.channels.map((c) => `ch${c.channel} ${c.tempF.toFixed(1)}°F`).join("  ") +
+        (p.uplink.ambientTempF !== undefined ? `  воздух ${p.uplink.ambientTempF.toFixed(1)}°F` : "")
+      : "не разобрано";
+    console.log(`  ${row.receivedAt.toISOString().slice(5, 16).replace("T", " ")}  ${what}`);
+  }
 }
 
 console.log(`\nвосстановится показаний: ${pending.length}`);
