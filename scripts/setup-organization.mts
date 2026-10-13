@@ -5,7 +5,13 @@ import { hashPassword } from "../src/lib/auth/password";
 import { generateToken } from "../src/lib/auth/tokens";
 import { sendMail, mailerMode } from "../src/lib/auth/mailer";
 import { inviteMail } from "../src/lib/auth/emails";
-import { INVITE_TTL_MS } from "../src/lib/auth/team";
+/**
+ * Not imported from src/lib/auth/team: that module reaches src/lib/db, which builds its client
+ * the moment it is loaded — before --prod has asked for the production URL. The script would
+ * then announce the production host and write to the local database, which is what happened on
+ * 13 Oct 2026. src/lib/db now refuses that outright; this keeps the import out of the way too.
+ */
+const INVITE_TTL_MS = 72 * 60 * 60_000;
 
 /**
  * Brings a customer on board: an organization of theirs, and an invitation to its first owner.
@@ -15,6 +21,7 @@ import { INVITE_TTL_MS } from "../src/lib/auth/team";
  *   npm run org:setup -- --name "Burger King — Steven" --owner steven@example.com --resend
  *   npm run org:setup -- --name "Burger King — Steven" --owner owner@qimby.test --print-link
  *   npm run org:setup -- --name "Burger King — Steven" --attach-user tech@example.com
+ *   npm run org:setup -- --list                 # what is there now, names exactly as stored
  *   npm run org:setup -- --name "Burger King — Steven" --telegram -1001234567890   # its own alert chat
  *   npm run org:setup -- --name "Burger King — Steven" --telegram-off              # back to the default group
  *
@@ -56,8 +63,39 @@ const telegramChat = flag("telegram");
 const telegramOff = argv.includes("--telegram-off");
 const base = (process.env.APP_URL ?? "https://qimby.onrender.com").replace(/\/+$/, "");
 
+/**
+ * `--list` prints what is actually there, exactly as stored. Two organizations can look
+ * identical on screen and differ by a trailing space or a Cyrillic letter among the Latin ones,
+ * which is how San Diego ended up in a second "Main org" on 13 Oct 2026: the name matched by
+ * eye and not by bytes. Each name is printed quoted, with its length and anything unusual in it
+ * spelled out.
+ */
+if (argv.includes("--list")) {
+  const orgs = await prisma.organization.findMany({
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true, name: true, createdAt: true, telegramChatId: true,
+      _count: { select: { locations: true, users: true, districts: true } },
+    },
+  });
+  if (!orgs.length) console.log("организаций нет");
+  for (const o of orgs) {
+    const odd = [...o.name]
+      .map((ch, i) => (/[\x20-\x7e]/.test(ch) ? null : `позиция ${i}: ${JSON.stringify(ch)} U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`))
+      .filter(Boolean);
+    console.log(
+      `${JSON.stringify(o.name)}  (${o.name.length} симв.)  ${o.id}\n` +
+        `   ресторанов ${o._count.locations}, людей ${o._count.users}, дистриктов ${o._count.districts}` +
+        `, чат ${o.telegramChatId ?? "общий"}, создана ${o.createdAt.toISOString().slice(0, 16).replace("T", " ")}` +
+        (odd.length ? `\n   ⚠ не-ASCII в имени — ${odd.join("; ")}` : ""),
+    );
+  }
+  await prisma.$disconnect();
+  process.exit(0);
+}
+
 if (!name) {
-  console.error('Нужно имя:  npm run org:setup -- --name "Burger King — Steven" [--owner e-mail] [--attach "Ресторан"]…');
+  console.error('Нужно имя:  npm run org:setup -- --name "Burger King — Steven" [--owner e-mail] [--attach "Ресторан"]…\n           npm run org:setup -- --list   — что уже есть, с точными именами');
   process.exit(1);
 }
 if (ownerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(ownerEmail)) {
