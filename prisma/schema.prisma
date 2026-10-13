@@ -18,8 +18,13 @@ enum UnitType {
 }
 
 enum AlertType {
+  /// Cold storage past its alert band for an hour. Also what an AC used to raise, before the
+  /// client's AC spec replaced "the room is hot" with "the unit is not cooling".
   temp_out_of_range
   offline
+  /// An air conditioner blowing air that is not cold enough, for 45 minutes during opening
+  /// hours. See src/lib/alerts/cooling.ts; walk-ins keep temp_out_of_range.
+  not_cooling
 }
 
 /// Who someone is, and therefore what they can reach. One role per user.

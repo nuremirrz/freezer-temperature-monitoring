@@ -1,4 +1,5 @@
 import { sendTelegram, telegramConfigured } from "./telegram";
+import { COOLING_DROP_F, type CoolingSubstatus } from "@/lib/alerts/cooling";
 import { recordNotifyOk, recordNotifyFailure, notifyStatus, type NotifyStatus } from "./status";
 
 export type NotificationKind = "opened" | "resolved";
@@ -33,7 +34,30 @@ export interface OfflineNotification {
   chatId?: string | null;
 }
 
-export type AlertNotification = TempAlertNotification | OfflineNotification;
+/**
+ * An air conditioner that stopped cooling. The room alone would not say it: the message carries
+ * both numbers and the drop between them, because that is the thing being judged and the first
+ * thing a technician asks about.
+ */
+export interface CoolingNotification {
+  kind: NotificationKind;
+  alertType: "not_cooling";
+  locationName: string;
+  unitName: string;
+  /** The room — what the unit is judged against. */
+  roomF: number;
+  /** Air leaving the duct. Null only if the reading that ended the alert carried none. */
+  ductF: number | null;
+  /** Why it is no longer an alert; only read on a resolve. */
+  substatus: CoolingSubstatus;
+  durationMin: number;
+  /** Deep link to the location screen, when APP_URL is configured */
+  url?: string;
+  /** The organization's own chat; null or absent goes to the default group */
+  chatId?: string | null;
+}
+
+export type AlertNotification = TempAlertNotification | OfflineNotification | CoolingNotification;
 
 export interface Notifier {
   /** No chat means the default group — Qimby's own, and every customer's without a chat of its own. */
@@ -93,6 +117,29 @@ export function formatAlertMessage(n: AlertNotification): string {
       return `🔴 ${loc} · ${n.unitName}: ${fmtTemp(n.tempF)} (норма ${range}), ${formatDuration(n.durationMin)}${link}`;
     }
     return `🟢 ${loc} · ${n.unitName}: снова в норме, ${fmtTemp(n.tempF)} (норма ${range}). Длилось ${formatDuration(n.durationMin)}${link}`;
+  }
+
+  if (n.alertType === "not_cooling") {
+    const room = `комната ${fmtTemp(n.roomF)}`;
+    const duct = n.ductF === null ? null : `дакт ${fmtTemp(n.ductF)}`;
+    const drop = n.ductF === null ? null : `разница ${fmtTemp(n.roomF - n.ductF)}`;
+    if (n.kind === "opened") {
+      const numbers = [room, duct, drop].filter(Boolean).join(", ");
+      return `🔴 ${loc} · ${n.unitName}: не холодит — ${numbers} (нужно от ${fmtTemp(COOLING_DROP_F)}), ${formatDuration(n.durationMin)}${link}`;
+    }
+    const lasted = `Длилось ${formatDuration(n.durationMin)}`;
+    if (n.substatus === "cooling") {
+      return `🟢 ${loc} · ${n.unitName}: снова холодит — ${[room, duct, drop].filter(Boolean).join(", ")}. ${lasted}${link}`;
+    }
+    const because =
+      n.substatus === "no-load"
+        ? `в помещении стало прохладно, ${room}`
+        : n.substatus === "closed"
+          ? "ресторан закрылся"
+          : n.substatus === "heating"
+            ? "переключился на тепло"
+            : room;
+    return `🟢 ${loc} · ${n.unitName}: больше не в аварии — ${because}. ${lasted}${link}`;
   }
 
   if (n.locationWide) {

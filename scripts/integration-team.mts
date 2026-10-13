@@ -17,8 +17,8 @@ import { insertReadings, writeErrorStatus } from "../src/lib/readings/write";
 import { resolveWindow } from "../src/lib/readings/window";
 import { readingSeries, weatherSeries } from "../src/lib/readings/series";
 import { insertWeather, sampleWeather, backfillWeather } from "../src/lib/weather/store";
-import { zonedParts } from "../src/lib/tz";
-import { runOfflineCheck, resolveOfflineForSensor } from "../src/lib/alerts/service";
+import { zonedParts, zonedToUtcMs } from "../src/lib/tz";
+import { runOfflineCheck, resolveOfflineForSensor, processNewReading } from "../src/lib/alerts/service";
 import { addPhoto, deletePhoto, photoContent, listPhotos } from "../src/lib/units/photos";
 import { localStorage as localPhotoStorage, type ObjectStorage } from "../src/lib/storage";
 import { mkdtemp, stat } from "node:fs/promises";
@@ -500,6 +500,94 @@ await resolveOfflineForSensor(flapSensor.id);
 await stop();
 check("о чём не сообщали, о том и не отчитываемся", mine().length === 0, mine().join(" | "));
 check("в истории при этом остались обе тревоги", (await prisma.alert.count({ where: { unitId: flapUnit.id, type: "offline" } })) === 2);
+
+console.log("\n=== кондиционер судится по перепаду, а не по жаре в зале ===");
+// An AC cannot be judged the way a freezer is: on a 100 °F afternoon a healthy unit will not
+// hold 80 °F in a kitchen. What separates "hot day" from "broken" is the drop across the duct.
+const acLoc = await prisma.location.create({ data: { name: "AC Restaurant", address: "1", city: "X", state: "CA", zip: "90000", lat: 0, lng: 0, timezone: LA, organizationId: org.id } });
+const acUnit = await prisma.unit.create({ data: { locationId: acLoc.id, type: "ac", name: "AC1 - Kitchen", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85 } });
+const wifUnit = await prisma.unit.create({ data: { locationId: acLoc.id, type: "walk_in_freezer", name: "WIF", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 } });
+const acSensor = await prisma.sensor.create({ data: { devEui: "A8404100000000F3", locationId: acLoc.id, expectedIntervalSec: 300 } });
+await prisma.sensorChannel.create({ data: { sensorId: acSensor.id, channel: 1, unitId: acUnit.id } });
+await prisma.sensorChannel.create({ data: { sensorId: acSensor.id, channel: 2, unitId: wifUnit.id } });
+
+// Wall-clock times in the restaurant's own zone, so "working hours" means the same thing here
+// as it does in production whenever this suite happens to run.
+const today = zonedParts(Date.now(), LA);
+const laAt = (h: number, mi: number) => new Date(zonedToUtcMs({ ...today, h, mi }, LA));
+const acHeard: string[] = [];
+const acLog = console.log;
+const acListen = () => { console.log = (...a: unknown[]) => { const line = String(a[0]); if (line.startsWith("[notify")) acHeard.push(line); else acLog(...a); }; };
+const acStop = async () => { await new Promise((res) => setTimeout(res, 300)); console.log = acLog; };
+const acMine = () => acHeard.filter((l) => l.includes("AC Restaurant"));
+
+/** Writes a stretch of readings for a unit and evaluates the last one, as ingest would. */
+async function feed(unitId: string, from: Date, to: Date, everyMin: number, tempF: number, probeTempF: number | null) {
+  let last = from;
+  for (let t = from.getTime(); t <= to.getTime(); t += everyMin * 60_000) {
+    last = new Date(t);
+    await prisma.reading.create({ data: { unitId, sensorId: acSensor.id, channel: 1, tempF, probeTempF, measuredAt: last } });
+  }
+  acListen();
+  await processNewReading({ unitId, sensorId: acSensor.id, channel: 1, tempF, measuredAt: last });
+  await acStop();
+}
+const openOn = (unitId: string, type: "not_cooling" | "temp_out_of_range") =>
+  prisma.alert.count({ where: { unitId, type, resolvedAt: null } });
+const clearAc = async () => { await prisma.alert.deleteMany({ where: { unitId: { in: [acUnit.id, wifUnit.id] } } }); await prisma.reading.deleteMany({ where: { unitId: { in: [acUnit.id, wifUnit.id] } } }); acHeard.length = 0; };
+
+// Жарко в зале, но из дакта идёт холод: это рабочий кондиционер, сколько бы часов ни длилось
+await feed(acUnit.id, laAt(10, 0), laAt(14, 0), 5, 92, 70);
+check("жара в помещении при холодном дакте — не тревога", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 0, acMine().join(" | "));
+
+// Сорок минут без холода — ещё рано
+await clearAc();
+await feed(acUnit.id, laAt(13, 20), laAt(14, 0), 5, 84, 82);
+check("сорок минут без холода — ещё не тревога", (await openOn(acUnit.id, "not_cooling")) === 0, acMine().join(" | "));
+
+// Сорок пять — тревога, одно красное сообщение, и в нём оба числа
+await clearAc();
+await feed(acUnit.id, laAt(13, 15), laAt(14, 0), 5, 84, 82);
+const acAlert = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "not_cooling", resolvedAt: null } });
+check("сорок пять минут без холода — тревога", acAlert !== null && acAlert.openedAt.getTime() === laAt(13, 15).getTime(), String(acAlert?.openedAt));
+check("в сообщении и комната, и дакт, и перепад", acMine().length === 1 && acMine()[0].includes("не холодит") && acMine()[0].includes("комната 84°F") && acMine()[0].includes("дакт 82°F") && acMine()[0].includes("разница 2°F"), acMine().join(" | "));
+
+// Заработал — тревога закрывается, одно зелёное
+acHeard.length = 0;
+await feed(acUnit.id, laAt(14, 5), laAt(14, 5), 5, 84, 64);
+check("снова холодит — тревога закрыта и одно зелёное сообщение", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 1 && acMine()[0].includes("снова холодит"), acMine().join(" | "));
+
+// И сразу же снова встал: до следующей тревоги надо снова отработать свои 45 минут
+acHeard.length = 0;
+await feed(acUnit.id, laAt(14, 10), laAt(14, 30), 5, 84, 82);
+check("сразу после восстановления тревога не возвращается", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 0, acMine().join(" | "));
+
+// Ночью не судим вообще
+await clearAc();
+await feed(acUnit.id, laAt(2, 0), laAt(4, 0), 5, 95, 94);
+check("в нерабочее время тревога не поднимается", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 0, acMine().join(" | "));
+
+// Дыра в данных не обнуляет отсчёт: пакеты теряются здесь каждый день
+await clearAc();
+for (const t of [laAt(13, 0), laAt(13, 5), laAt(13, 10), laAt(13, 45), laAt(13, 50), laAt(13, 55), laAt(14, 0)]) {
+  await prisma.reading.create({ data: { unitId: acUnit.id, sensorId: acSensor.id, channel: 1, tempF: 84, probeTempF: 82, measuredAt: t } });
+}
+acListen();
+await processNewReading({ unitId: acUnit.id, sensorId: acSensor.id, channel: 1, tempF: 84, measuredAt: laAt(14, 0) });
+await acStop();
+const gapAlert = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "not_cooling", resolvedAt: null } });
+check("потерянные пакеты не обнуляют отсчёт", gapAlert !== null && gapAlert.openedAt.getTime() === laAt(13, 0).getTime(), String(gapAlert?.openedAt));
+
+// Кондиционер больше не поднимает температурную тревогу, даже далеко за пределами диапазона
+await clearAc();
+await feed(acUnit.id, laAt(10, 0), laAt(14, 0), 5, 99, 70);
+check("кондиционер больше не поднимает temp_out_of_range", (await openOn(acUnit.id, "temp_out_of_range")) === 0);
+
+// А морозильник живёт по прежнему правилу, нетронутым
+await clearAc();
+await feed(wifUnit.id, laAt(12, 0), laAt(14, 0), 5, 25, null);
+check("морозильник по-прежнему судится по своей температуре", (await openOn(wifUnit.id, "temp_out_of_range")) === 1, acMine().join(" | "));
+check("и ни одной not_cooling на холодильном оборудовании", (await prisma.alert.count({ where: { unitId: wifUnit.id, type: "not_cooling" } })) === 0);
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);
 await wipe();

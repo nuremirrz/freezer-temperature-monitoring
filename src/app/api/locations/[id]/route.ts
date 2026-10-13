@@ -84,9 +84,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const units = loc.units.map((u) => {
     const last = latest.get(u.id);
     const status = deriveUnitStatus(u.alerts, Boolean(last));
-    const temp = u.alerts.find((a) => a.type === "temp_out_of_range");
+    // A fault outranks being out of touch: a unit that is both is shown as the fault.
+    const fault = u.alerts.find((a) => a.type === "temp_out_of_range" || a.type === "not_cooling");
     const offline = u.alerts.find((a) => a.type === "offline");
-    const active = temp ?? offline ?? null;
+    const active = fault ?? offline ?? null;
     const channel = u.channels[0];
     return {
       id: u.id,

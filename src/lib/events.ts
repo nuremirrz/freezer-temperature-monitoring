@@ -24,7 +24,7 @@ export interface AlertEvent {
     id: string;
     unitId: string;
     locationId: string;
-    alertType: "temp_out_of_range" | "offline";
+    alertType: "temp_out_of_range" | "offline" | "not_cooling";
     state: "opened" | "updated" | "resolved";
     peakTempF: number | null;
     openedAt: string;

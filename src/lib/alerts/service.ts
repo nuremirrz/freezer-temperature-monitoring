@@ -16,6 +16,7 @@ import {
   offlineAfterSec,
   NOTIFY_COOLDOWN_MIN,
 } from "./rules";
+import { evaluateCooling, RUN_LOOKBACK_MIN, type CoolingReading } from "./cooling";
 
 /**
  * Database-backed alert workflow. Rules live in rules.ts (pure); this file loads
@@ -95,16 +96,45 @@ export interface NewReading {
   measuredAt: Date;
 }
 
-/** Evaluate the temp-out-of-range rule for a reading that was just inserted. */
+/**
+ * Evaluate a reading that was just inserted.
+ *
+ * Which rule applies depends on the equipment, and the two are not variations of one idea.
+ * Cold storage is judged by its own temperature: a freezer that cannot hold 10 °F is broken,
+ * whatever the kitchen is doing. An air conditioner is judged by the drop across it, because
+ * the room it is asked to cool is not under its control — see cooling.ts. So an AC no longer
+ * raises temp_out_of_range at all, and a walk-in never raises not_cooling.
+ */
 export async function processNewReading(reading: NewReading, now: Date = new Date()): Promise<void> {
-  const unit = await prisma.unit.findUnique({
-    where: { id: reading.unitId },
-    include: { location: locationWithChat },
-  });
+  const unit = await loadUnit(reading.unitId);
   if (!unit) return;
   // A deactivated restaurant keeps its readings and raises nothing: nobody is there to act.
   if (unit.location.deactivatedAt) return;
 
+  publish({
+    type: "reading",
+    data: {
+      unitId: unit.id,
+      locationId: unit.locationId,
+      sensorId: reading.sensorId,
+      channel: reading.channel,
+      tempF: reading.tempF,
+      measuredAt: reading.measuredAt.toISOString(),
+    },
+  });
+
+  if (unit.type === "ac") return processCoolingReading(unit, reading, now);
+  return processTempReading(unit, reading, now);
+}
+
+function loadUnit(id: string) {
+  return prisma.unit.findUnique({ where: { id }, include: { location: locationWithChat } });
+}
+
+type UnitWithLocation = NonNullable<Awaited<ReturnType<typeof loadUnit>>>;
+
+/** The temp-out-of-range rule, for cold storage. Unchanged by the AC spec. */
+async function processTempReading(unit: UnitWithLocation, reading: NewReading, now: Date): Promise<void> {
   const openAlert = await prisma.alert.findFirst({
     where: { unitId: unit.id, type: "temp_out_of_range", resolvedAt: null },
   });
@@ -121,18 +151,6 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
     outOfRangeForMin: run ? (reading.measuredAt.getTime() - run.startedAt.getTime()) / 60_000 : 0,
     runPeakTempF: run?.peakTempF ?? null,
     openAlert: openAlert ? { peakTempF: openAlert.peakTempF } : null,
-  });
-
-  publish({
-    type: "reading",
-    data: {
-      unitId: unit.id,
-      locationId: unit.locationId,
-      sensorId: reading.sensorId,
-      channel: reading.channel,
-      tempF: reading.tempF,
-      measuredAt: reading.measuredAt.toISOString(),
-    },
   });
 
   switch (decision.action) {
@@ -238,6 +256,128 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
 
     case "none":
       return;
+  }
+}
+
+/**
+ * The cooling rule, for air conditioners.
+ *
+ * The run is read from the stored readings rather than carried in memory: the reading that
+ * triggered this call is already written, so one query over the last few hours is the whole
+ * history the rule needs, and a restart or a missed uplink cannot leave a half-counted run
+ * behind. At a five-minute pace that window is about thirty-six rows.
+ *
+ * One thing here is an assumption rather than an instruction, and it is deliberate. Sanjar
+ * said closed hours leave a unit Normal, and the rule follows that: a reading taken while the
+ * restaurant is shut ends a run, and an open alert closes at midnight. Taken literally that
+ * also means a unit still broken at closing time is announced as recovered — which is why the
+ * closing message says "ресторан закрылся" instead of "снова холодит", and why this is written
+ * down to be confirmed rather than quietly reinterpreted.
+ */
+async function processCoolingReading(unit: UnitWithLocation, reading: NewReading, now: Date): Promise<void> {
+  const openAlert = await prisma.alert.findFirst({
+    where: { unitId: unit.id, type: "not_cooling", resolvedAt: null },
+  });
+
+  const rows = await prisma.reading.findMany({
+    where: {
+      unitId: unit.id,
+      measuredAt: { gte: new Date(reading.measuredAt.getTime() - RUN_LOOKBACK_MIN * 60_000), lte: reading.measuredAt },
+    },
+    orderBy: { measuredAt: "asc" },
+    select: { tempF: true, probeTempF: true, measuredAt: true },
+  });
+  const readings: CoolingReading[] = rows.map((r) => ({
+    tempF: r.tempF,
+    probeTempF: r.probeTempF,
+    measuredAt: r.measuredAt.getTime(),
+  }));
+
+  const decision = evaluateCooling({
+    readings,
+    // The room temperature it is expected to be holding is the top of its own normal band:
+    // 80 °F in a kitchen, 77 °F in a dining room.
+    ctx: { loadAboveF: unit.rangeMaxF, timeZone: unit.location.timezone },
+    openAlert: openAlert ? { openedAt: openAlert.openedAt.getTime() } : null,
+  });
+
+  const newest = rows[rows.length - 1];
+  const ductF = newest?.probeTempF ?? null;
+
+  if (decision.action === "open") {
+    const openedAt = new Date(decision.openedAt);
+    const alert = await prisma.alert.create({
+      data: {
+        unitId: unit.id,
+        type: "not_cooling",
+        openedAt,
+        // The room at the moment it was called: what the card and the history show for this alert.
+        peakTempF: reading.tempF,
+      },
+    });
+    publish({
+      type: "alert",
+      data: {
+        id: alert.id,
+        unitId: unit.id,
+        locationId: unit.locationId,
+        alertType: "not_cooling",
+        state: "opened",
+        peakTempF: alert.peakTempF,
+        openedAt: alert.openedAt.toISOString(),
+        resolvedAt: null,
+      },
+    });
+    notifyAndStamp([alert.id], {
+      kind: "opened",
+      alertType: "not_cooling",
+      locationName: unit.location.name,
+      unitName: unit.name,
+      roomF: reading.tempF,
+      ductF,
+      substatus: decision.substatus,
+      durationMin: minutesBetween(openedAt, now),
+      url: locationUrl(unit.locationId),
+      chatId: chatFor(unit.location.organization),
+    });
+    return;
+  }
+
+  if (decision.action === "close" && openAlert) {
+    // Say it is back only if we said it was broken. The offline path learned this the hard
+    // way: a recovery for an alert nobody was told about is noise with a green circle.
+    const shouldNotify = openAlert.lastNotifiedAt !== null;
+    const resolved = await prisma.alert.update({
+      where: { id: openAlert.id },
+      data: { resolvedAt: reading.measuredAt },
+    });
+    publish({
+      type: "alert",
+      data: {
+        id: resolved.id,
+        unitId: unit.id,
+        locationId: unit.locationId,
+        alertType: "not_cooling",
+        state: "resolved",
+        peakTempF: resolved.peakTempF,
+        openedAt: resolved.openedAt.toISOString(),
+        resolvedAt: resolved.resolvedAt?.toISOString() ?? null,
+      },
+    });
+    if (shouldNotify) {
+      notifyAndStamp([resolved.id], {
+        kind: "resolved",
+        alertType: "not_cooling",
+        locationName: unit.location.name,
+        unitName: unit.name,
+        roomF: reading.tempF,
+        ductF,
+        substatus: decision.substatus,
+        durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
+        url: locationUrl(unit.locationId),
+        chatId: chatFor(unit.location.organization),
+      });
+    }
   }
 }
 

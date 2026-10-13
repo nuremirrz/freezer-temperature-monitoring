@@ -8,7 +8,7 @@
 export type UnitStatus = "normal" | "alert" | "offline";
 export type LocationStatus = UnitStatus;
 export type UnitType = "freezer" | "walk_in_freezer" | "walk_in_cooler" | "ac";
-export type AlertType = "temp_out_of_range" | "offline";
+export type AlertType = "temp_out_of_range" | "offline" | "not_cooling";
 export type Trend = "rising" | "falling" | "stable" | "unknown";
 
 export interface StatusCounts {
