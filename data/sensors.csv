@@ -74,9 +74,17 @@ Burger King #4808,A8404142915FAFBD,bk4808-san-bernardino-wic-f,LTC2,1200,2,Walk-
 # Channels are the opposite way round from San Bernardino, and the first packets say so rather
 # than the sheet: channel 1 read 36.3 °F and channel 2 read 6.5 °F, so 1 is the cooler and 2 the
 # freezer. The device is our old bench unit draginotst2 under a new name — same dev_eui.
-# Five minutes, not the twenty the other restaurants' walk-ins keep: 48 packets in 3 h 50 min.
-Burger King #835,A84041784362379C,bk835-rosecrans-sd-wic-f,LTC2,300,1,Walk-in Cooler,LTC2-LT,wic-f ch1 cooler
-Burger King #835,A84041784362379C,bk835-rosecrans-sd-wic-f,LTC2,300,2,Walk-in Freezer,LTC2-LT,wic-f ch2 freezer
+# Twenty minutes, after all — the step the other restaurants' walk-ins keep. The first few
+# hours looked like five (48 packets in 3 h 50 min) and this said 300 on that evidence; a full
+# day of it, measured on 13 Oct, settled at twenty. Nobody changed anything from our side, the
+# same way bk4808-san-bernardino-wic-f drifted from five to twenty in October.
+#
+# Leaving it at 300 is not harmless: the silence threshold is derived from this number, so it
+# would have stood at 30 minutes against a device that is quiet for 20 by design. One lost
+# packet — routine on this network — is 40 minutes of silence and a false alarm in Telegram.
+# At 1200 the threshold becomes 61 minutes and a lost packet costs nothing.
+Burger King #835,A84041784362379C,bk835-rosecrans-sd-wic-f,LTC2,1200,1,Walk-in Cooler,LTC2-LT,wic-f ch1 cooler
+Burger King #835,A84041784362379C,bk835-rosecrans-sd-wic-f,LTC2,1200,2,Walk-in Freezer,LTC2-LT,wic-f ch2 freezer
 # The client's sheet numbers the air conditioners 1, 2, 3 and 5 — there is no AC4 on it.
 Burger King #835,A84041DE816251AF,bk835-rosecrans-sd-ac1-kitchen,LHT65N,300,1,AC1 - Kitchen,LHT65N,AC1-kitchen
 Burger King #835,A84041CA1A634EA5,bk835-rosecrans-sd-ac2-kitchen,LHT65N,300,1,AC2 - Kitchen,LHT65N,AC2-kitchen
