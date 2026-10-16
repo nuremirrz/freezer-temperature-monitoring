@@ -15,6 +15,14 @@ It holds the data, not the schema. The schema is already in git as Prisma migrat
 restore is `prisma migrate deploy` followed by `npm run db:restore` — which is why there is no
 `pg_dump` here, and no need for a client binary matching the server's major version.
 
+**The counts in `meta.json` are of rows actually written**, not of a `count()` taken before the
+export. The difference matters because the source is live: readings keep arriving, the export
+walks ids upward, and a row written halfway through lands in the file but not in a total taken
+seconds earlier. On 16 October 2026 one reading did exactly that — the copy held 86198 rows
+against a recorded 86197, the restore check refused the mismatch, and a sound backup was thrown
+away. The restore still demands an exact match, because that is what catches a file truncated
+after it was written; it is the recorded number that had to stop guessing.
+
 **Two tables are left out on purpose:** `Session` and `AuthToken`. Those are live sign-in keys
 and password-reset links. They expire on their own, a restore without them costs each user one
 sign-in, and copying them off-site every night would spread working keys to someone's account
@@ -29,9 +37,18 @@ than quietly producing copies that are missing it.
 ```bash
 npm run db:backup                      # into backups/<timestamp>/
 npm run db:backup -- --out /some/dir
+npm run db:backup -- --prod            # production; asks for the URL, typed blind
 ```
 
 Read-only. It prints the host it read from, so check that line before trusting the result.
+
+`--prod` exists because the nightly job is not the only time a copy is wanted — before a risky
+migration, or on a morning when the job itself has failed. Without it the only way to reach
+production by hand was to put the URL on the command line, where it lands in the shell history
+and on the screen; the prompt shows nothing as it is typed.
+
+A table's line may read `40017 строк  (при подсчёте было 40012 — база живая)`. That is the
+database growing while the export runs, not a fault — see below.
 
 ## Restoring
 

@@ -1,11 +1,11 @@
 import "./load-env";
+import { prodIfAsked } from "./prod-url";
 import { createWriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { prisma } from "../src/lib/db";
 import { BACKUP_MODELS, assertModelsCoverSchema, type BackupMeta } from "../src/lib/backup/manifest";
 
 /**
@@ -13,6 +13,7 @@ import { BACKUP_MODELS, assertModelsCoverSchema, type BackupMeta } from "../src/
  *
  *   npm run db:backup                     # into backups/<timestamp>/
  *   npm run db:backup -- --out /some/dir
+ *   npm run db:backup -- --prod           # the production database; asks for the URL, typed blind
  *
  * Why not pg_dump: the schema already lives in git as Prisma migrations, so a copy of the data
  * is a complete backup — restore is `prisma migrate deploy` and then `npm run db:restore`. That
@@ -22,6 +23,10 @@ import { BACKUP_MODELS, assertModelsCoverSchema, type BackupMeta } from "../src/
  *
  * Rows are streamed in pages, so this stays flat in memory as the readings pile up.
  */
+
+await prodIfAsked();
+// Imported only now: the client reads DATABASE_URL the moment it is created
+const { prisma } = await import("../src/lib/db");
 
 const PAGE = 5_000;
 
@@ -70,6 +75,17 @@ for (const model of BACKUP_MODELS) {
   }
   const file = path.join(outDir, `${model.name}.ndjson.gz`);
 
+  // Counted as the rows go past, never from the count() above.
+  //
+  // The database is live: readings keep arriving while the export runs. The cursor walks ids
+  // upward, so a row written mid-export has a higher id, lands in the file, and is missing from
+  // a total taken seconds earlier. On 16 Oct 2026 exactly one reading did that, the copy held
+  // 86198 rows against a recorded 86197, and the nightly job threw away a perfectly good backup
+  // because the two numbers disagreed. Recording what was actually written removes the race
+  // instead of tolerating it — and keeps the restore's check strict, where it still catches the
+  // thing it was built for: a file truncated or damaged after it was written.
+  let written = 0;
+
   async function* rows(): AsyncGenerator<string> {
     let cursor: Record<string, unknown> | undefined;
     for (;;) {
@@ -79,6 +95,7 @@ for (const model of BACKUP_MODELS) {
         ...(cursor ? { cursor, skip: 1 } : {}),
       });
       if (!page.length) return;
+      written += page.length;
       // One JSON object per line: appendable, streamable, and readable without a parser.
       yield page.map((r: unknown) => JSON.stringify(r)).join("\n") + "\n";
       if (page.length < PAGE) return;
@@ -87,8 +104,10 @@ for (const model of BACKUP_MODELS) {
   }
 
   await pipeline(Readable.from(rows()), createGzip(), createWriteStream(file));
-  counts[model.name] = total;
-  console.log(`  ${model.name.padEnd(16)} ${String(total).padStart(7)} строк`);
+  counts[model.name] = written;
+  // Saying so out loud: a live database that grew under the export is normal, not a fault.
+  const grew = written === total ? "" : `  (при подсчёте было ${total} — база живая)`;
+  console.log(`  ${model.name.padEnd(16)} ${String(written).padStart(7)} строк${grew}`);
 }
 
 const migrations = await prisma.$queryRawUnsafe<{ migration_name: string }[]>(
