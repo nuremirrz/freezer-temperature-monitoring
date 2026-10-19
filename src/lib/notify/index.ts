@@ -1,5 +1,5 @@
 import { sendTelegram, telegramConfigured } from "./telegram";
-import { COOLING_DROP_F, type CoolingSubstatus } from "@/lib/alerts/cooling";
+import { COOLING_DROP_F, RECOVERY_SUSTAINED_MIN } from "@/lib/alerts/cooling";
 import { recordNotifyOk, recordNotifyFailure, notifyStatus, type NotifyStatus } from "./status";
 
 export type NotificationKind = "opened" | "resolved";
@@ -48,8 +48,6 @@ export interface CoolingNotification {
   roomF: number;
   /** Air leaving the duct. Null only if the reading that ended the alert carried none. */
   ductF: number | null;
-  /** Why it is no longer an alert; only read on a resolve. */
-  substatus: CoolingSubstatus;
   durationMin: number;
   /** Deep link to the location screen, when APP_URL is configured */
   url?: string;
@@ -127,19 +125,11 @@ export function formatAlertMessage(n: AlertNotification): string {
       const numbers = [room, duct, drop].filter(Boolean).join(", ");
       return `🔴 ${loc} · ${n.unitName}: не холодит — ${numbers} (нужно от ${fmtTemp(COOLING_DROP_F)}), ${formatDuration(n.durationMin)}${link}`;
     }
-    const lasted = `Длилось ${formatDuration(n.durationMin)}`;
-    if (n.substatus === "cooling") {
-      return `🟢 ${loc} · ${n.unitName}: снова холодит — ${[room, duct, drop].filter(Boolean).join(", ")}. ${lasted}${link}`;
-    }
-    // Closing time never resolves one of these, so there is no "ресторан закрылся" wording here
-    // on purpose: an alert that outlives the day is still an alert in the morning.
-    const because =
-      n.substatus === "no-load"
-        ? `в помещении стало прохладно, ${room}`
-        : n.substatus === "heating"
-          ? "переключился на тепло"
-          : room;
-    return `🟢 ${loc} · ${n.unitName}: больше не в аварии — ${because}. ${lasted}${link}`;
+    // One shape, because there is now only one way out: an unbroken hour of real cooling.
+    // Nothing else closes one of these — not the restaurant shutting, not the room cooling
+    // down by itself — so the message can say plainly what happened.
+    const numbers = [room, duct, drop].filter(Boolean).join(", ");
+    return `🟢 ${loc} · ${n.unitName}: снова холодит ${formatDuration(RECOVERY_SUSTAINED_MIN)} подряд — ${numbers}. Длилось ${formatDuration(n.durationMin)}${link}`;
   }
 
   if (n.locationWide) {

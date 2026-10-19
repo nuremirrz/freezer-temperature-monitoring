@@ -267,10 +267,12 @@ async function processTempReading(unit: UnitWithLocation, reading: NewReading, n
  * history the rule needs, and a restart or a missed uplink cannot leave a half-counted run
  * behind. At a five-minute pace that window is about thirty-six rows.
  *
- * Closing time is not a recovery. A reading taken while the restaurant is shut ends a run, so
- * nothing new is raised overnight and the count never carries across the night — but an alert
- * already open stays open until a reading actually shows the unit working. A unit that broke
- * during the day is still red at half past seven, for whoever opens up (Sanjar, 14 Oct 2026).
+ * Two counters decide everything, and both live in cooling.ts. While no alert is open, minutes
+ * of failure accumulate during opening hours with a warm room; past forty-five an alert opens.
+ * While one is open, only an unbroken hour of real cooling closes it — at any hour and at any
+ * room temperature, which is what keeps a unit that broke during the day red through the night
+ * and into the morning for whoever opens up (Sanjar, 14 Oct 2026), without needing a rule of
+ * its own to say so.
  */
 async function processCoolingReading(unit: UnitWithLocation, reading: NewReading, now: Date): Promise<void> {
   const openAlert = await prisma.alert.findFirst({
@@ -333,7 +335,6 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
       unitName: unit.name,
       roomF: reading.tempF,
       ductF,
-      substatus: decision.substatus,
       durationMin: minutesBetween(openedAt, now),
       url: locationUrl(unit.locationId),
       chatId: chatFor(unit.location.organization),
@@ -370,8 +371,7 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
         unitName: unit.name,
         roomF: reading.tempF,
         ductF,
-        substatus: decision.substatus,
-        durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
+          durationMin: minutesBetween(resolved.openedAt, reading.measuredAt),
         url: locationUrl(unit.locationId),
         chatId: chatFor(unit.location.organization),
       });

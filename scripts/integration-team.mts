@@ -552,15 +552,33 @@ const acAlert = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type:
 check("сорок пять минут без холода — тревога", acAlert !== null && acAlert.openedAt.getTime() === laAt(13, 15).getTime(), String(acAlert?.openedAt));
 check("в сообщении и комната, и дакт, и перепад", acMine().length === 1 && acMine()[0].includes("не холодит") && acMine()[0].includes("комната 84°F") && acMine()[0].includes("дакт 82°F") && acMine()[0].includes("разница 2°F"), acMine().join(" | "));
 
-// Заработал — тревога закрывается, одно зелёное
+// Один хороший замер — ещё не выздоровление: компрессор, дёрнувшийся один раз, не починился
 acHeard.length = 0;
 await feed(acUnit.id, laAt(14, 5), laAt(14, 5), 5, 84, 64);
-check("снова холодит — тревога закрыта и одно зелёное сообщение", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 1 && acMine()[0].includes("снова холодит"), acMine().join(" | "));
+check("один замер с холодом тревогу не закрывает", (await openOn(acUnit.id, "not_cooling")) === 1 && acMine().length === 0, acMine().join(" | "));
+
+// И вечерняя прохлада сама по себе тоже: комната остыла, а про кондиционер мы ничего не узнали
+await feed(acUnit.id, laAt(14, 10), laAt(14, 40), 5, 74, 73);
+check("остывшая комната тревогу не закрывает", (await openOn(acUnit.id, "not_cooling")) === 1);
+
+// Час подряд с настоящим перепадом — вот теперь закрывается, одним зелёным
+acHeard.length = 0;
+await feed(acUnit.id, laAt(14, 45), laAt(15, 45), 5, 84, 64);
+check("час холода подряд — тревога закрыта и одно зелёное сообщение", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 1 && acMine()[0].includes("снова холодит"), acMine().join(" | "));
 
 // И сразу же снова встал: до следующей тревоги надо снова отработать свои 45 минут
 acHeard.length = 0;
-await feed(acUnit.id, laAt(14, 10), laAt(14, 30), 5, 84, 82);
+await feed(acUnit.id, laAt(15, 50), laAt(16, 10), 5, 84, 82);
 check("сразу после восстановления тревога не возвращается", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 0, acMine().join(" | "));
+
+// Замороженный счётчик: сорок минут аварии, один прохладный замер, и ещё десять минут аварии
+await clearAc();
+await feed(acUnit.id, laAt(13, 0), laAt(13, 40), 5, 84, 82);
+check("сорок минут аварии — тревоги пока нет", (await openOn(acUnit.id, "not_cooling")) === 0);
+await feed(acUnit.id, laAt(13, 45), laAt(13, 45), 5, 74, 73);
+acHeard.length = 0;
+await feed(acUnit.id, laAt(13, 50), laAt(14, 0), 5, 84, 82);
+check("прохладная комната счётчик замораживает, а не обнуляет", (await openOn(acUnit.id, "not_cooling")) === 1, acMine().join(" | "));
 
 // Сломался днём — и остаётся красным всю ночь, до утра
 await clearAc();

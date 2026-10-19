@@ -1,4 +1,4 @@
-import { zonedParts } from "@/lib/tz";
+import { zonedParts, zonedToUtcMs, addZonedDays } from "@/lib/tz";
 
 /**
  * Whether an air conditioner is doing its job — pure, no database, no clock of its own.
@@ -10,7 +10,11 @@ import { zonedParts } from "@/lib/tz";
  * air in the room. A unit that is cooling makes cold air whatever the room is doing; a unit
  * that is broken blows room air.
  *
- * From the client's AC alert spec, with the open questions answered by Sanjar on 13–14 Oct 2026.
+ * Two counters, as the client's AC spec describes them. One runs only while no alert is open
+ * and decides when to raise one; the other runs only while an alert is open and decides when
+ * to let it go. They are not each other's mirror: failing is judged during opening hours with
+ * a warm room, recovering is judged at any hour and at any room temperature, because a unit
+ * that cools is working whatever the clock says.
  */
 
 /** Local time the restaurant opens: closed is 00:00–07:30, so nothing is judged before it. */
@@ -25,25 +29,35 @@ export const HEATING_RISE_F = 18;
 /**
  * How long "not cooling" has to hold before an alert opens.
  *
- * Sanjar, 13 Oct: forty-five minutes, and in minutes rather than a count of measurements. A
- * count would mean something different on every device: three readings is fifteen minutes on
- * a five-minute sensor and an hour on a twenty-minute one, and it shrinks further whenever
- * packets are lost.
+ * Sanjar, 13 Oct 2026: forty-five minutes, and in minutes rather than a count of measurements.
+ * A count would mean something different on every device: nine readings is forty-five minutes
+ * on a five-minute sensor and three hours on a twenty-minute one, and it shrinks further
+ * whenever packets are lost. The spec's own "9 замеров" is this same forty-five minutes.
  */
 export const NOT_COOLING_SUSTAINED_MIN = 45;
 
 /**
- * How far back the run is traced. The alert opens forty-five minutes into a run, so a run can
- * never grow much past that unaided; three hours only matters if the checks themselves stopped
- * (a deploy, a server down), and then the alert is dated from the edge of this window rather
- * than from a start we never saw.
+ * How long a unit has to keep cooling before its alert is let go.
+ *
+ * The spec's recovery counter: twelve readings, which is an hour. A broken compressor that
+ * stutters back to life for one reading has not recovered, and announcing that it has is worse
+ * than saying nothing — so the alert stands until the unit has cooled for a solid hour.
  */
-export const RUN_LOOKBACK_MIN = 180;
+export const RECOVERY_SUSTAINED_MIN = 60;
+
+/**
+ * How far back readings are loaded.
+ *
+ * The alert counter never reaches further than the morning's 07:30 reset, so sixteen and a half
+ * hours is its true ceiling; the recovery counter needs only the last hour plus slack. This is
+ * the one number that has to cover the longer of the two.
+ */
+export const RUN_LOOKBACK_MIN = 17 * 60;
 
 /**
  * Why a unit is in the state it is in. Four of these are shades of normal, and they exist to
  * answer "was the unit even being judged at that moment?" — a question the plain green status
- * cannot. Internal: Sanjar asked on 14 Oct that none of them reach the screen.
+ * cannot. Internal: Sanjar asked on 14 Oct 2026 that none of them reach the screen.
  */
 export type CoolingSubstatus =
   /** The restaurant is closed. Nothing is judged and nothing is raised. */
@@ -59,36 +73,25 @@ export type CoolingSubstatus =
   /** The room is warm and the duct is not cold. This is the fault that opens an alert. */
   | "not-cooling";
 
-/**
- * What ends a run of failures: the unit was seen to be fine, or was not being judged at all.
- * Closed hours belong here — we were not watching, so the count cannot carry across the night.
- */
-const ENDS_RUN: ReadonlySet<CoolingSubstatus> = new Set<CoolingSubstatus>(["closed", "no-load", "cooling", "heating"]);
-
-/**
- * What closes an alert that is already open — and closing hours are deliberately not among them.
- *
- * The two sets differ by that one entry, and the difference is Sanjar's, 14 Oct 2026: a unit
- * that broke during the day keeps its alert through the night and is still red in the morning.
- * The alternative was worse in both directions — it would have announced a recovery nobody
- * earned at midnight, and hidden a dead compressor from whoever opens up at half past seven.
- *
- * Not judging a closed restaurant and forgetting what we already found are different things.
- */
-const RESOLVES: ReadonlySet<CoolingSubstatus> = new Set<CoolingSubstatus>(["no-load", "cooling", "heating"]);
-
-export function endsRun(s: CoolingSubstatus): boolean {
-  return ENDS_RUN.has(s);
-}
-
-export function resolvesAlert(s: CoolingSubstatus): boolean {
-  return RESOLVES.has(s);
-}
-
 /** Open from 07:30 local to midnight. The zone is the restaurant's, never the server's. */
 export function isWithinWorkingHours(ms: number, timeZone: string): boolean {
   const p = zonedParts(ms, timeZone);
   return p.h * 60 + p.mi >= WORK_START_MIN;
+}
+
+/**
+ * The most recent 07:30 local at or before `ms` — where the alert counter starts from.
+ *
+ * The spec resets it every morning: yesterday's half-finished count must not add itself to
+ * today's. Built from the zone's own wall clock rather than by subtracting hours, so the
+ * mornings either side of a daylight-saving change still land on 07:30.
+ */
+export function workDayStart(ms: number, timeZone: string): number {
+  const p = zonedParts(ms, timeZone);
+  const today = zonedToUtcMs({ ...p, h: 7, mi: 30 }, timeZone);
+  if (ms >= today) return today;
+  const y = zonedParts(addZonedDays(ms, -1, timeZone), timeZone);
+  return zonedToUtcMs({ ...y, h: 7, mi: 30 }, timeZone);
 }
 
 export interface CoolingReading {
@@ -109,58 +112,128 @@ export interface CoolingContext {
   timeZone: string;
 }
 
+/** How much colder the duct is than the room, or null when there is no duct reading. */
+export function coolingDrop(r: CoolingReading): number | null {
+  return r.probeTempF === null ? null : r.tempF - r.probeTempF;
+}
+
 /**
  * The verdict on one reading.
  *
  * Order matters. Closed comes first because a closed restaurant is not judged at all, whatever
  * the numbers say. A missing duct reading comes next: without it there is no verdict to give.
- * Then the load check, then the drop itself. "heating" sits after "no-load" only because both
- * are shades of normal and the distinction never changes what happens — if that ever stops
- * being true, heating has to be tested first.
+ * Then the load check, then the drop itself.
+ *
+ * The spec puts "heating" inside step 3 with the condition `room < 80`, which step 3 can never
+ * see — step 2 has already sent every room under 80 away as "no load". As written that branch
+ * is unreachable; here it sits after the load check for the same reason, and both say the same
+ * thing in the end, since heating and no-load are both shades of normal.
  */
 export function substatusOf(r: CoolingReading, ctx: CoolingContext): CoolingSubstatus {
   if (!isWithinWorkingHours(r.measuredAt, ctx.timeZone)) return "closed";
-  if (r.probeTempF === null) return "no-duct";
+  const drop = coolingDrop(r);
+  if (drop === null) return "no-duct";
   if (r.tempF < ctx.loadAboveF) return "no-load";
-  if (r.tempF - r.probeTempF >= COOLING_DROP_F) return "cooling";
-  if (r.probeTempF - r.tempF >= HEATING_RISE_F) return "heating";
+  if (drop >= COOLING_DROP_F) return "cooling";
+  if (-drop >= HEATING_RISE_F) return "heating";
   return "not-cooling";
 }
 
-export interface CoolingRun {
-  /** When the current unbroken run of "not cooling" began. */
-  startedAt: number;
-  /** Minutes from that first bad reading to the newest one. */
+export interface AlertCounter {
+  /** Minutes accumulated towards NOT_COOLING_SUSTAINED_MIN. */
   minutes: number;
+  /** The first reading that counted, for dating the alert. Null while the counter is at zero. */
+  startedAt: number | null;
 }
 
 /**
- * The current unbroken run of "not cooling", read backwards from the newest reading.
+ * The alert counter: how long this unit has been failing, in minutes, since the last reset.
  *
- * Two rules decide what breaks a run, and both are Sanjar's, 13 Oct:
+ * Three behaviours, and the difference between the last two is the whole point:
  *
- * - any normal reading resets it to zero — one measurement showing a working unit is enough,
- *   so a unit that recovers and fails again starts its forty-five minutes over;
- * - a hole in the data does not. Losing a packet or three is ordinary on this network, and
- *   fifteen minutes of silence is not evidence that anything improved. Holes longer than
- *   half an hour are already somebody else's alert — the sensor is reported offline — so the
- *   only gaps that ever land inside a run are the routine ones.
+ * - **cooling resets it to zero.** One reading showing a working unit wipes the count, so a
+ *   unit that recovers and fails again starts its forty-five minutes over.
+ * - **closed hours, a cool room, a unit on heat and a reading with no duct all freeze it.**
+ *   They neither add to it nor wipe it. Not judging a unit is not the same as finding it
+ *   healthy: a kitchen that dips under 80 °F for one reading at seven in the evening has told
+ *   us nothing about the compressor, and the forty minutes of failure before it still stand.
+ * - **a hole in the data adds to it.** Losing a packet or three is ordinary on this network and
+ *   fifteen minutes of silence is not evidence that anything improved, so the minutes between
+ *   two failing readings count whether or not anything arrived in between (Sanjar, 13 Oct 2026,
+ *   shown this exact case and asked; the spec would have frozen them instead).
  *
- * A reading with no duct probe is the same kind of nothing as a hole: skipped, neither
- * breaking the run nor counting towards it.
+ * The count never reaches back past the morning's 07:30, which is the spec's daily reset.
  */
-export function notCoolingRun(readings: CoolingReading[], ctx: CoolingContext): CoolingRun | null {
-  if (!readings.length) return null;
-  const newest = readings[readings.length - 1];
-  if (substatusOf(newest, ctx) !== "not-cooling") return null;
+export function alertCounter(readings: CoolingReading[], ctx: CoolingContext): AlertCounter {
+  if (!readings.length) return { minutes: 0, startedAt: null };
+  const dayStart = workDayStart(readings[readings.length - 1].measuredAt, ctx.timeZone);
 
-  let startedAt = newest.measuredAt;
-  for (let i = readings.length - 2; i >= 0; i--) {
-    const s = substatusOf(readings[i], ctx);
-    if (endsRun(s)) break;
-    if (s === "not-cooling") startedAt = readings[i].measuredAt;
+  let minutes = 0;
+  let startedAt: number | null = null;
+  let prev: CoolingReading | null = null;
+  let prevFailing = false;
+
+  for (const r of readings) {
+    if (r.measuredAt < dayStart) continue;
+    const s = substatusOf(r, ctx);
+    if (s === "cooling") {
+      minutes = 0;
+      startedAt = null;
+      prevFailing = false;
+    } else if (s === "not-cooling") {
+      // Time counts only between two failing readings. A stretch that was frozen — the room
+      // cool, the restaurant shut, no duct reading — was time we were not judging the unit,
+      // and it must not arrive later as minutes of failure. So the reading that resumes a
+      // count after a freeze adds nothing; it only re-anchors it.
+      if (prev && prevFailing) minutes += (r.measuredAt - prev.measuredAt) / 60_000;
+      // The first failing reading of the day has nothing behind it either, so one reading can
+      // never open an alert however bad it looks.
+      startedAt ??= r.measuredAt;
+      prevFailing = true;
+    } else {
+      // Frozen. The next failing reading re-anchors the count instead of extending it, so the
+      // frozen stretch itself can never arrive later as minutes of failure.
+      prevFailing = false;
+    }
+    prev = r;
   }
-  return { startedAt, minutes: (newest.measuredAt - startedAt) / 60_000 };
+  return { minutes, startedAt };
+}
+
+/**
+ * The recovery counter: how long the unit has been cooling without interruption.
+ *
+ * Only the drop matters here — not the hour, not how warm the room is. A unit that makes cold
+ * air at three in the morning is working, and the spec says so: "+1, если ΔT ≥ 12°F, в любое
+ * время суток и при любом room". Anything less than the full drop puts it back to zero; a
+ * reading with no duct temperature freezes it, because there is nothing to judge.
+ *
+ * This is also what keeps an alert alive overnight without a rule of its own. A unit that is
+ * simply switched off makes no cold air, so the counter never builds, and the alert is still
+ * there in the morning for whoever opens up (Sanjar, 14 Oct 2026).
+ */
+export function recoveryCounter(readings: CoolingReading[]): number {
+  let minutes = 0;
+  let prev: CoolingReading | null = null;
+  // As in the alert counter: time counts between two readings that both show cooling, never
+  // across one that does not. Otherwise the minutes a unit spent failing, or a stretch nobody
+  // could judge, would be handed to it as credit towards recovering.
+  let prevCooling = false;
+
+  for (const r of readings) {
+    const drop = coolingDrop(r);
+    if (drop === null) {
+      prevCooling = false;
+    } else if (drop >= COOLING_DROP_F) {
+      if (prev && prevCooling) minutes += (r.measuredAt - prev.measuredAt) / 60_000;
+      prevCooling = true;
+    } else {
+      minutes = 0;
+      prevCooling = false;
+    }
+    prev = r;
+  }
+  return minutes;
 }
 
 export type CoolingDecision =
@@ -175,27 +248,19 @@ export interface CoolingEvaluation {
   openAlert: { openedAt: number } | null;
 }
 
-/**
- * What to do about the reading that just arrived.
- *
- * An open alert closes on the first reading that shows the unit working, with no margin around
- * the twelve degrees — the forty-five minute run is the damping. A unit hovering at the boundary
- * cannot flap: every reopen costs another three quarters of an hour of continuous failure, which
- * is exactly the guard a hysteresis band would have bought, without a second invented number.
- *
- * Closing time does not close an alert; see RESOLVES above.
- */
+/** What to do about the reading that just arrived. */
 export function evaluateCooling(e: CoolingEvaluation): CoolingDecision {
   const newest = e.readings[e.readings.length - 1];
   const substatus = newest ? substatusOf(newest, e.ctx) : "no-duct";
 
   if (e.openAlert) {
-    return resolvesAlert(substatus) ? { action: "close", substatus } : { action: "none", substatus };
+    const cooling = recoveryCounter(e.readings);
+    return cooling >= RECOVERY_SUSTAINED_MIN ? { action: "close", substatus } : { action: "none", substatus };
   }
 
-  const run = notCoolingRun(e.readings, e.ctx);
-  if (run && run.minutes >= NOT_COOLING_SUSTAINED_MIN) {
-    return { action: "open", openedAt: run.startedAt, substatus };
+  const counter = alertCounter(e.readings, e.ctx);
+  if (counter.minutes >= NOT_COOLING_SUSTAINED_MIN && counter.startedAt !== null) {
+    return { action: "open", openedAt: counter.startedAt, substatus };
   }
   return { action: "none", substatus };
 }

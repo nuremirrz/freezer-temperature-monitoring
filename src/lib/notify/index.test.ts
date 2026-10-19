@@ -117,62 +117,23 @@ const NOT_COOLING = {
 
 describe("the message about an air conditioner that stopped cooling", () => {
   it("carries both numbers and the drop between them", () => {
-    const text = formatAlertMessage({
-      ...NOT_COOLING,
-      kind: "opened",
-      substatus: "not-cooling",
-      durationMin: 45,
-    });
+    const text = formatAlertMessage({ ...NOT_COOLING, kind: "opened", durationMin: 45 });
     expect(text).toBe(
       "🔴 BK #835 · AC1 - Kitchen: не холодит — комната 84°F, дакт 82°F, разница 2°F (нужно от 12°F), 45 мин",
     );
   });
 
-  it("says it is cooling again, with the drop that proves it", () => {
-    const text = formatAlertMessage({
-      ...NOT_COOLING,
-      kind: "resolved",
-      ductF: 68,
-      substatus: "cooling",
-      durationMin: 80,
-    });
+  it("says how long it has been cooling again, because that is the only way out now", () => {
+    // Nothing else closes one of these: not the restaurant shutting, not the room cooling by
+    // itself. So the message can say plainly what happened, with the drop that proves it.
+    const text = formatAlertMessage({ ...NOT_COOLING, kind: "resolved", ductF: 68, durationMin: 80 });
     expect(text).toBe(
-      "🟢 BK #835 · AC1 - Kitchen: снова холодит — комната 84°F, дакт 68°F, разница 16°F. Длилось 1 ч 20 мин",
+      "🟢 BK #835 · AC1 - Kitchen: снова холодит 1 ч подряд — комната 84°F, дакт 68°F, разница 16°F. Длилось 1 ч 20 мин",
     );
   });
 
-  it("does not claim a unit is cooling when it was the room that cooled", () => {
-    const text = formatAlertMessage({
-      ...NOT_COOLING,
-      kind: "resolved",
-      roomF: 74,
-      ductF: 73,
-      substatus: "no-load",
-      durationMin: 120,
-    });
-    expect(text).toContain("больше не в аварии — в помещении стало прохладно, комната 74°F");
-    expect(text).not.toContain("снова холодит");
-  });
-
-  it("does not claim a unit is cooling when it merely switched to heat", () => {
-    const text = formatAlertMessage({
-      ...NOT_COOLING,
-      kind: "resolved",
-      substatus: "heating",
-      durationMin: 240,
-    });
-    expect(text).toContain("больше не в аварии — переключился на тепло. Длилось 4 ч");
-    expect(text).not.toContain("снова холодит");
-  });
-
   it("still reads sensibly for an AC that reported no duct temperature", () => {
-    const text = formatAlertMessage({
-      ...NOT_COOLING,
-      kind: "opened",
-      ductF: null,
-      substatus: "not-cooling",
-      durationMin: 45,
-    });
+    const text = formatAlertMessage({ ...NOT_COOLING, kind: "opened", ductF: null, durationMin: 45 });
     expect(text).toBe("🔴 BK #835 · AC1 - Kitchen: не холодит — комната 84°F (нужно от 12°F), 45 мин");
   });
 })
