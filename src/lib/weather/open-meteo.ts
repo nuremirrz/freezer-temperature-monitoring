@@ -15,10 +15,74 @@ export interface WeatherSample {
 const BASE = "https://api.open-meteo.com/v1/forecast";
 const ARCHIVE = "https://archive-api.open-meteo.com/v1/archive";
 
+/** How long to wait before the one retry. Long enough for a blip, short enough for a loop. */
+export const RETRY_AFTER_MS = 2_000;
+
+export class OpenMeteoError extends Error {
+  constructor(
+    message: string,
+    /** Whether asking again could plausibly give a different answer. */
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "OpenMeteoError";
+  }
+}
+
+/** Enough of a body to recognise what answered, on one line. */
+const snippet = (body: string): string => {
+  const flat = body.replace(/\s+/g, " ").trim();
+  return flat.length > 160 ? `${flat.slice(0, 160)}…` : flat || "(empty body)";
+};
+
+async function readJson(url: string, fetcher: typeof fetch): Promise<unknown> {
+  const endpoint = url.replace(/\?.*/, "");
+  let res: Response;
+  let body: string;
+  try {
+    res = await fetcher(url, { headers: { accept: "application/json" } });
+    body = await res.text();
+  } catch (err) {
+    // Nothing was served: DNS, TLS, or a connection cut mid-answer. Worth asking again.
+    throw new OpenMeteoError(`Open-Meteo unreachable for ${endpoint}: ${err instanceof Error ? err.message : String(err)}`, true);
+  }
+
+  if (!res.ok) {
+    // Their own errors are JSON with a matching status, e.g. 400 {"error":true,"reason":"…"}.
+    // A 4xx is our own request being wrong and will be wrong again; 429 and 5xx are theirs.
+    throw new OpenMeteoError(`Open-Meteo ${res.status} for ${endpoint}: ${snippet(body)}`, res.status === 429 || res.status >= 500);
+  }
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    // A 200 whose body is not JSON. That is not a shape Open-Meteo produces — every error of
+    // theirs carries a status — so something between us and them answered instead, briefly.
+    // This is the failure that has been showing up as "Unexpected token 'U'" with no clue
+    // attached: the body and the content type are the clue, so they go in the message.
+    throw new OpenMeteoError(
+      `Open-Meteo answered ${res.status} ${res.headers.get("content-type") ?? "without a content type"} that is not JSON for ${endpoint}: ${snippet(body)}`,
+      true,
+    );
+  }
+}
+
+/**
+ * One retry, and only for failures that could go the other way.
+ *
+ * The sampling loop asks once a quarter of an hour, so a failure costs a whole sample and
+ * leaves a hole in the chart. In October 2026 these arrived as brief blips that took every
+ * restaurant at the same second — around one a day — which is exactly the shape a single
+ * retry absorbs. A bad request is not retried: it would be just as bad the second time.
+ */
 async function getJson(url: string, fetcher: typeof fetch): Promise<unknown> {
-  const res = await fetcher(url, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`Open-Meteo ${res.status} for ${url.replace(/\?.*/, "")}`);
-  return res.json();
+  try {
+    return await readJson(url, fetcher);
+  } catch (err) {
+    if (!(err instanceof OpenMeteoError) || !err.retryable) throw err;
+    await new Promise((r) => setTimeout(r, RETRY_AFTER_MS));
+    return readJson(url, fetcher);
+  }
 }
 
 /** The conditions now: Open-Meteo refreshes these every 15 minutes. */
