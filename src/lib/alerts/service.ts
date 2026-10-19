@@ -17,7 +17,14 @@ import {
   NOTIFY_COOLDOWN_MIN,
 } from "./rules";
 import { evaluateCooling, RUN_LOOKBACK_MIN, type CoolingReading } from "./cooling";
-import { ALERT_ERROR } from "./codes";
+import { ALERT_ERROR, ALERT_ERROR_TEXT, type AlertErrorCode } from "./codes";
+import { untrustedBecause, readingsTrusted, isReadingBasedCause, STUCK_WINDOW_H, CONFIRM_READINGS } from "./trust";
+
+/**
+ * How far back an air conditioner's readings are loaded: enough for the alert counter's day
+ * and enough for the stuck-sensor rule's eighteen hours, whichever asks for more.
+ */
+const AC_LOOKBACK_MIN = Math.max(RUN_LOOKBACK_MIN, STUCK_WINDOW_H * 60 + 30);
 
 /**
  * Database-backed alert workflow. Rules live in rules.ts (pure); this file loads
@@ -307,7 +314,7 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
   const rows = await prisma.reading.findMany({
     where: {
       unitId: unit.id,
-      measuredAt: { gte: new Date(reading.measuredAt.getTime() - RUN_LOOKBACK_MIN * 60_000), lte: reading.measuredAt },
+      measuredAt: { gte: new Date(reading.measuredAt.getTime() - AC_LOOKBACK_MIN * 60_000), lte: reading.measuredAt },
     },
     orderBy: { measuredAt: "asc" },
     select: { tempF: true, probeTempF: true, measuredAt: true },
@@ -318,6 +325,24 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
     measuredAt: r.measuredAt.getTime(),
   }));
 
+  const newest = rows[rows.length - 1];
+  const ductF = newest?.probeTempF ?? null;
+
+  // Step 1 of the client's algorithm, before anything else: can these readings be believed?
+  // A ΔT computed from a probe lying in the plant room is a verdict about nothing.
+  const untrusted = untrustedBecause(readings, reading.measuredAt.getTime());
+  const openOffline = await prisma.alert.findFirst({
+    where: { unitId: unit.id, type: "offline", resolvedAt: null },
+  });
+  if (untrusted !== null) {
+    if (!openOffline) await openUntrusted(unit, untrusted, reading.tempF, ductF, now);
+    // Counters are frozen while the numbers mean nothing — no cooling verdict from here.
+    return;
+  }
+  if (openOffline && isReadingBasedCause(openOffline.error) && readingsTrusted(readings)) {
+    await closeUntrusted(unit, openOffline, reading.tempF, ductF, now);
+  }
+
   const decision = evaluateCooling({
     readings,
     // The room temperature it is expected to be holding is the top of its own normal band:
@@ -325,9 +350,6 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
     ctx: { loadAboveF: unit.rangeMaxF, timeZone: unit.location.timezone },
     openAlert: openAlert ? { openedAt: openAlert.openedAt.getTime() } : null,
   });
-
-  const newest = rows[rows.length - 1];
-  const ductF = newest?.probeTempF ?? null;
 
   if (decision.action === "open") {
     const openedAt = new Date(decision.openedAt);
@@ -407,6 +429,90 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
 }
 
 /**
+ * A unit whose readings cannot be believed goes offline, with the reason on the row.
+ *
+ * Offline is the right status even though the device is talking: the spec's first question is
+ * whether the data can be trusted, and a unit that fails it is not "normal with a caveat". The
+ * message says the reason rather than "не выходит на связь", which would be a plain lie about
+ * a sensor reporting every five minutes.
+ */
+async function openUntrusted(
+  unit: UnitWithLocation,
+  error: AlertErrorCode,
+  roomF: number,
+  ductF: number | null,
+  now: Date,
+): Promise<void> {
+  const alert = await prisma.alert.create({
+    data: { unitId: unit.id, type: "offline", openedAt: now, error, roomAtOpenF: roomF, ductAtOpenF: ductF },
+  });
+  publish({
+    type: "alert",
+    data: {
+      id: alert.id,
+      unitId: unit.id,
+      locationId: unit.locationId,
+      alertType: "offline",
+      state: "opened",
+      peakTempF: null,
+      openedAt: alert.openedAt.toISOString(),
+      resolvedAt: null,
+    },
+  });
+  notifyAndStamp([alert.id], {
+    kind: "opened",
+    alertType: "offline",
+    locationName: unit.location.name,
+    unitNames: [unit.name],
+    locationWide: false,
+    silentMin: 0,
+    reason: ALERT_ERROR_TEXT[error],
+    url: locationUrl(unit.locationId),
+    chatId: chatFor(unit.location.organization),
+  });
+}
+
+/** Two normal readings in a row, so the numbers mean something again. */
+async function closeUntrusted(
+  unit: UnitWithLocation,
+  open: { id: string; openedAt: Date; lastNotifiedAt: Date | null; error: number | null },
+  roomF: number,
+  ductF: number | null,
+  now: Date,
+): Promise<void> {
+  const resolved = await prisma.alert.update({
+    where: { id: open.id },
+    data: { resolvedAt: now, roomAtCloseF: roomF, ductAtCloseF: ductF },
+  });
+  publish({
+    type: "alert",
+    data: {
+      id: resolved.id,
+      unitId: unit.id,
+      locationId: unit.locationId,
+      alertType: "offline",
+      state: "resolved",
+      peakTempF: null,
+      openedAt: resolved.openedAt.toISOString(),
+      resolvedAt: resolved.resolvedAt?.toISOString() ?? null,
+    },
+  });
+  // Same rule as everywhere else: only say it is back if we said it was gone.
+  if (open.lastNotifiedAt === null) return;
+  notifyAndStamp([resolved.id], {
+    kind: "resolved",
+    alertType: "offline",
+    locationName: unit.location.name,
+    unitNames: [unit.name],
+    locationWide: false,
+    silentMin: minutesBetween(resolved.openedAt, now),
+    reason: ALERT_ERROR_TEXT[open.error as AlertErrorCode] ?? "Показания",
+    url: locationUrl(unit.locationId),
+    chatId: chatFor(unit.location.organization),
+  });
+}
+
+/**
  * A sensor just reported: any open offline alerts on its units are resolved immediately
  * (no need to wait for the minute-based check).
  */
@@ -423,9 +529,31 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
   const unitIds = sensor.channels.map((c) => c.unitId as string);
   if (!unitIds.length) return;
 
-  const open = await prisma.alert.findMany({
+  const all = await prisma.alert.findMany({
     where: { unitId: { in: unitIds }, type: "offline", resolvedAt: null },
   });
+  if (!all.length) return;
+
+  // An uplink arriving is proof the radio works, and that is all it proves. An alert raised
+  // because the numbers themselves were nonsense is not answered by more of them: it needs two
+  // readings in a row that make sense, which is the spec's own way back out. Without this the
+  // ingest path would close such an alert on the very uplink that carried the next bad reading,
+  // and the pair would flap on every packet.
+  const suspect = all.filter((a) => isReadingBasedCause(a.error));
+  const trusted = new Map<string, boolean>();
+  await Promise.all(
+    [...new Set(suspect.map((a) => a.unitId))].map(async (unitId) => {
+      const rows = await prisma.reading.findMany({
+        where: { unitId },
+        orderBy: { measuredAt: "desc" },
+        take: CONFIRM_READINGS,
+        select: { tempF: true, probeTempF: true, measuredAt: true },
+      });
+      const asc = rows.reverse().map((r) => ({ ...r, measuredAt: r.measuredAt.getTime() }));
+      trusted.set(unitId, readingsTrusted(asc));
+    }),
+  );
+  const open = all.filter((a) => !isReadingBasedCause(a.error) || trusted.get(a.unitId) === true);
   if (!open.length) return;
 
   const silentSince = open.reduce((min, a) => (a.openedAt < min ? a.openedAt : min), open[0].openedAt);

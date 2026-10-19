@@ -534,7 +534,7 @@ async function feed(unitId: string, from: Date, to: Date, everyMin: number, temp
   await processNewReading({ unitId, sensorId: acSensor.id, channel: 1, tempF, measuredAt: last });
   await acStop();
 }
-const openOn = (unitId: string, type: "not_cooling" | "temp_out_of_range") =>
+const openOn = (unitId: string, type: "not_cooling" | "temp_out_of_range" | "offline") =>
   prisma.alert.count({ where: { unitId, type, resolvedAt: null } });
 const clearAc = async () => { await prisma.alert.deleteMany({ where: { unitId: { in: [acUnit.id, wifUnit.id] } } }); await prisma.reading.deleteMany({ where: { unitId: { in: [acUnit.id, wifUnit.id] } } }); acHeard.length = 0; };
 
@@ -617,6 +617,41 @@ check("потерянные пакеты не обнуляют отсчёт", ga
 await clearAc();
 await feed(acUnit.id, laAt(10, 0), laAt(14, 0), 5, 99, 70);
 check("кондиционер больше не поднимает temp_out_of_range", (await openOn(acUnit.id, "temp_out_of_range")) === 0);
+
+// Щуп вывалился из гнезда: датчик жив и шлёт, но верить ему нельзя
+await clearAc();
+await feed(acUnit.id, laAt(13, 0), laAt(13, 0), 5, 84, 150);
+check("один замер с отключённым щупом — ещё не повод", (await openOn(acUnit.id, "offline")) === 0);
+acHeard.length = 0;
+await feed(acUnit.id, laAt(13, 5), laAt(13, 5), 5, 84, 150);
+const dead = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "offline", resolvedAt: null } });
+check("два подряд — офлайн с кодом 21", dead?.error === 21, String(dead?.error));
+check("и сообщение говорит причину, а не «не выходит на связь»", acMine().length === 1 && acMine()[0].includes("щуп отключён") && !acMine()[0].includes("не выходит на связь"), acMine().join(" | "));
+
+// Пока показания бредовые, приход пакета ничего не закрывает
+await feed(acUnit.id, laAt(13, 10), laAt(13, 10), 5, 84, 150);
+check("новый пакет с тем же бредом тревогу не закрывает", (await openOn(acUnit.id, "offline")) === 1);
+
+// Один нормальный замер — ещё не выход
+await feed(acUnit.id, laAt(13, 15), laAt(13, 15), 5, 84, 68);
+check("один нормальный замер — ещё не выход из офлайна", (await openOn(acUnit.id, "offline")) === 1);
+
+// Два подряд — выход
+acHeard.length = 0;
+await feed(acUnit.id, laAt(13, 20), laAt(13, 20), 5, 84, 68);
+const back = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "offline" }, orderBy: { openedAt: "desc" } });
+check("два нормальных подряд — офлайн закрыт", (await openOn(acUnit.id, "offline")) === 0 && back?.roomAtCloseF === 84, `${back?.roomAtCloseF}`);
+
+// Невозможное значение комнаты — свой код
+await clearAc();
+await feed(acUnit.id, laAt(14, 0), laAt(14, 5), 5, 12, 68);
+const impossible = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "offline", resolvedAt: null } });
+check("невозможные показания — офлайн с кодом 41", impossible?.error === 41, String(impossible?.error));
+
+// Пока датчику не верят, перепад не считается и тревога «не холодит» не открывается
+await clearAc();
+await feed(acUnit.id, laAt(12, 0), laAt(14, 0), 5, 199, 199);
+check("пока показаниям не верят, «не холодит» не поднимается", (await openOn(acUnit.id, "not_cooling")) === 0 && (await openOn(acUnit.id, "offline")) === 1);
 
 // А морозильник живёт по прежнему правилу, нетронутым
 await clearAc();

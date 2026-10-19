@@ -28,6 +28,12 @@ export interface OfflineNotification {
   /** All sensors at the location are silent → gateway / internet problem */
   locationWide: boolean;
   silentMin: number;
+  /**
+   * Why the readings cannot be trusted, when it is not silence — a probe out of its socket, a
+   * number nothing could have measured, a device repeating itself. "Датчик не выходит на связь"
+   * would be a lie about a device that is talking perfectly well.
+   */
+  reason?: string;
   /** Deep link to the location screen, when APP_URL is configured */
   url?: string;
   /** The organization's own chat; null or absent goes to the default group */
@@ -138,6 +144,11 @@ export function formatAlertMessage(n: AlertNotification): string {
       : `🟢 ${loc}: связь с рестораном восстановлена${link}`;
   }
   const units = n.unitNames.join(", ");
+  if (n.reason) {
+    return n.kind === "opened"
+      ? `⚫ ${loc} · ${units}: ${n.reason.toLowerCase()} — показаниям нельзя доверять${link}`
+      : `🟢 ${loc} · ${units}: показания снова в порядке${link}`;
+  }
   return n.kind === "opened"
     ? `⚫ ${loc} · ${units}: датчик не выходит на связь ${formatDuration(n.silentMin)}${link}`
     : `🟢 ${loc} · ${units}: датчик снова на связи${link}`;
