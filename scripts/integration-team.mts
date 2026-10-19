@@ -618,6 +618,17 @@ await clearAc();
 await feed(acUnit.id, laAt(10, 0), laAt(14, 0), 5, 99, 70);
 check("кондиционер больше не поднимает temp_out_of_range", (await openOn(acUnit.id, "temp_out_of_range")) === 0);
 
+// Перегретый щуп при жаре — не отопление, а неработающий юнит (Санжар, 20 окт)
+await clearAc();
+acHeard.length = 0;
+await feed(acUnit.id, laAt(13, 15), laAt(14, 0), 5, 80, 100);
+check("горячий дакт при жаре — тревога, а не «отопление»", (await openOn(acUnit.id, "not_cooling")) === 1, acMine().join(" | "));
+
+// А настоящее отопление — холодная комната и тёплый дакт — счётчик не трогает
+await clearAc();
+await feed(acUnit.id, laAt(9, 0), laAt(10, 0), 5, 68, 92);
+check("холодная комната с тёплым дактом — отопление, тревоги нет", (await openOn(acUnit.id, "not_cooling")) === 0);
+
 // Щуп вывалился из гнезда: датчик жив и шлёт, но верить ему нельзя
 await clearAc();
 await feed(acUnit.id, laAt(13, 0), laAt(13, 0), 5, 84, 150);

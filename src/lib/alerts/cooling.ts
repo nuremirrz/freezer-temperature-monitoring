@@ -124,18 +124,24 @@ export function coolingDrop(r: CoolingReading): number | null {
  * the numbers say. A missing duct reading comes next: without it there is no verdict to give.
  * Then the load check, then the drop itself.
  *
- * The spec puts "heating" inside step 3 with the condition `room < 80`, which step 3 can never
- * see — step 2 has already sent every room under 80 away as "no load". As written that branch
- * is unreachable; here it sits after the load check for the same reason, and both say the same
- * thing in the end, since heating and no-load are both shades of normal.
+ * "Heating" keeps the spec's `room < 80`, and that condition is the whole point of it rather
+ * than an oversight. Sanjar, 20 Oct 2026, asked whether a hot duct alone was enough: no — "если
+ * жара сильная, и работает другой кондер, в комнате будет 80, а с дакта например щуп
+ * перегреется и будет 100". A probe baking in the ceiling of a kitchen that a neighbouring unit
+ * is holding at 80 looks exactly like a unit running on heat, and excusing it would hide a unit
+ * doing nothing at all. So heat is only believed when the room is genuinely cool.
+ *
+ * It is tested before the load check only so that the substatus names the right thing. Both
+ * freeze the counter, so for a cool room the two are the same decision either way — the case
+ * that changed is the warm one, which is now a failure to cool rather than an excuse.
  */
 export function substatusOf(r: CoolingReading, ctx: CoolingContext): CoolingSubstatus {
   if (!isWithinWorkingHours(r.measuredAt, ctx.timeZone)) return "closed";
   const drop = coolingDrop(r);
   if (drop === null) return "no-duct";
+  if (-drop >= HEATING_RISE_F && r.tempF < ctx.loadAboveF) return "heating";
   if (r.tempF < ctx.loadAboveF) return "no-load";
   if (drop >= COOLING_DROP_F) return "cooling";
-  if (-drop >= HEATING_RISE_F) return "heating";
   return "not-cooling";
 }
 

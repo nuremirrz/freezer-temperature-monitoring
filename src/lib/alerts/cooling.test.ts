@@ -106,8 +106,20 @@ describe("substatus of one reading", () => {
     expect(substatusOf({ tempF: room, probeTempF: room - COOLING_DROP_F + 0.1, measuredAt: at("14:00") }, KITCHEN)).toBe("not-cooling");
   });
 
-  it("recognises a unit running on heat", () => {
-    expect(substatusOf({ tempF: 81, probeTempF: 102, measuredAt: at("14:00") }, KITCHEN)).toBe("heating");
+  it("recognises a unit running on heat, which needs the room to be cool", () => {
+    // A winter morning: the room is cold and the duct is pushing warm air into it
+    expect(substatusOf({ tempF: 68, probeTempF: 92, measuredAt: at("09:00") }, KITCHEN)).toBe("heating");
+  });
+
+  /**
+   * Sanjar, 20 Oct 2026, on why the spec's `room < 80` is there: "если жара сильная, и работает
+   * другой кондер, в комнате будет 80, а с дакта например щуп перегреется и будет 100". A probe
+   * baking in the ceiling while a neighbouring unit holds the room looks like heating and is
+   * not — the unit is doing nothing, and calling it heating would excuse exactly that.
+   */
+  it("does not call a baking probe heat when the room is warm", () => {
+    expect(substatusOf({ tempF: 80, probeTempF: 100, measuredAt: at("14:00") }, KITCHEN)).toBe("not-cooling");
+    expect(substatusOf({ tempF: 85, probeTempF: 110, measuredAt: at("14:00") }, KITCHEN)).toBe("not-cooling");
   });
 });
 
@@ -167,7 +179,7 @@ describe("the alert counter", () => {
   it("is frozen by closed hours, by heat and by a reading with no duct", () => {
     const frozen = (r: Omit<CoolingReading, "measuredAt">, atLocal: string) =>
       count([...series("13:40", 9, 5, BROKEN), { ...r, measuredAt: at(atLocal) }, { ...BROKEN, measuredAt: at("17:50") }, { ...BROKEN, measuredAt: at("17:55") }]);
-    expect(frozen({ tempF: 81, probeTempF: 102 }, "13:45")).toBe(45); // heating
+    expect(frozen({ tempF: 68, probeTempF: 92 }, "13:45")).toBe(45); // heating
     expect(frozen({ tempF: 84, probeTempF: null }, "13:45")).toBe(45); // no duct
   });
 
