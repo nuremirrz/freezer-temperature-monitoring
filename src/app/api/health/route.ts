@@ -7,6 +7,7 @@ import { unreadFieldsSeen } from "@/lib/ttn/unread";
 import { writeErrorStatus } from "@/lib/readings/write";
 import { getStorage } from "@/lib/storage";
 import { weatherStatus } from "@/lib/weather/store";
+import { dbSize } from "@/lib/db-size";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,28 @@ const DEGRADED_AFTER_MIN = 20;
 export async function GET() {
   const now = new Date();
   try {
-    const [count, f] = await Promise.all([prisma.sensor.count(), currentFreshness(now)]);
+    const [count, f, storage] = await Promise.all([
+      prisma.sensor.count(),
+      currentFreshness(now),
+      dbSize(prisma, now.getTime()),
+    ]);
     const noUplink = count > 0 && (f.minutesSinceUplink === null || f.minutesSinceUplink > DEGRADED_AFTER_MIN);
     const writes = writeErrorStatus();
     // A failed write in the last hour is our fault and is said first: it is what came before
     // the two silent days of September 2026, and it shows up before "stalled" does.
     const recentWriteError = writes.lastFailedAt !== null && now.getTime() - Date.parse(writes.lastFailedAt) < 60 * 60_000;
-    const reason = recentWriteError ? "write_errors" : f.stalled ? "readings_stalled" : noUplink ? "no_uplink" : null;
+    // Running out of room is the slowest of these and the only one with warning attached, so
+    // it is named last — after anything already going wrong — but it is named. Past the limit
+    // Supabase turns the database read-only and readings stop being written without an error.
+    const reason = recentWriteError
+      ? "write_errors"
+      : f.stalled
+        ? "readings_stalled"
+        : noUplink
+          ? "no_uplink"
+          : storage?.low
+            ? "storage_low"
+            : null;
 
     return NextResponse.json({
       status: reason ? "degraded" : "ok",
@@ -48,6 +64,8 @@ export async function GET() {
       writeErrors: writes,
       // The Render free instance has 512 MB; this is what the Node process holds right now.
       memoryMb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      // Room left in the database, measured hourly. Null only if the size could not be read.
+      storage,
       // Measurement fields some device sends that the parser does not read — a new probe or
       // decoder. Empty is the normal state; anything here is data being thrown away.
       unreadFields: unreadFieldsSeen(),
