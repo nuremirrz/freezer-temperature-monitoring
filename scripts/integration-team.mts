@@ -474,6 +474,8 @@ listen();
 await runOfflineCheck();
 await stop();
 check("полчаса тишины — тревога и одно сообщение", mine().length === 1 && mine()[0].includes("WIF"), mine().join(" | "));
+const offAlert = await prisma.alert.findFirst({ where: { unitId: flapUnit.id, type: "offline" }, orderBy: { openedAt: "desc" } });
+check("офлайн-тревога записана с кодом причины 31", offAlert?.error === 31, String(offAlert?.error));
 
 // Датчик отозвался: одно зелёное
 heard.length = 0;
@@ -550,6 +552,7 @@ await clearAc();
 await feed(acUnit.id, laAt(13, 15), laAt(14, 0), 5, 84, 82);
 const acAlert = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "not_cooling", resolvedAt: null } });
 check("сорок пять минут без холода — тревога", acAlert !== null && acAlert.openedAt.getTime() === laAt(13, 15).getTime(), String(acAlert?.openedAt));
+check("в тревоге записаны обе температуры на момент открытия", acAlert?.roomAtOpenF === 84 && acAlert?.ductAtOpenF === 82 && acAlert?.error === null, `${acAlert?.roomAtOpenF}/${acAlert?.ductAtOpenF}`);
 check("в сообщении и комната, и дакт, и перепад", acMine().length === 1 && acMine()[0].includes("не холодит") && acMine()[0].includes("комната 84°F") && acMine()[0].includes("дакт 82°F") && acMine()[0].includes("разница 2°F"), acMine().join(" | "));
 
 // Один хороший замер — ещё не выздоровление: компрессор, дёрнувшийся один раз, не починился
@@ -565,6 +568,8 @@ check("остывшая комната тревогу не закрывает", 
 acHeard.length = 0;
 await feed(acUnit.id, laAt(14, 45), laAt(15, 45), 5, 84, 64);
 check("час холода подряд — тревога закрыта и одно зелёное сообщение", (await openOn(acUnit.id, "not_cooling")) === 0 && acMine().length === 1 && acMine()[0].includes("снова холодит"), acMine().join(" | "));
+const acClosed = await prisma.alert.findFirst({ where: { unitId: acUnit.id, type: "not_cooling" }, orderBy: { openedAt: "desc" } });
+check("и обе температуры на момент закрытия", acClosed?.roomAtCloseF === 84 && acClosed?.ductAtCloseF === 64, `${acClosed?.roomAtCloseF}/${acClosed?.ductAtCloseF}`);
 
 // И сразу же снова встал: до следующей тревоги надо снова отработать свои 45 минут
 acHeard.length = 0;
@@ -617,6 +622,8 @@ check("кондиционер больше не поднимает temp_out_of_r
 await clearAc();
 await feed(wifUnit.id, laAt(12, 0), laAt(14, 0), 5, 25, null);
 check("морозильник по-прежнему судится по своей температуре", (await openOn(wifUnit.id, "temp_out_of_range")) === 1, acMine().join(" | "));
+const wifAlert = await prisma.alert.findFirst({ where: { unitId: wifUnit.id, type: "temp_out_of_range" } });
+check("у холодильной тревоги тоже записана температура, но без дакта", wifAlert?.roomAtOpenF === 25 && wifAlert?.ductAtOpenF === null, `${wifAlert?.roomAtOpenF}/${wifAlert?.ductAtOpenF}`);
 check("и ни одной not_cooling на холодильном оборудовании", (await prisma.alert.count({ where: { unitId: wifUnit.id, type: "not_cooling" } })) === 0);
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);

@@ -17,6 +17,7 @@ import {
   NOTIFY_COOLDOWN_MIN,
 } from "./rules";
 import { evaluateCooling, RUN_LOOKBACK_MIN, type CoolingReading } from "./cooling";
+import { ALERT_ERROR } from "./codes";
 
 /**
  * Database-backed alert workflow. Rules live in rules.ts (pure); this file loads
@@ -25,6 +26,27 @@ import { evaluateCooling, RUN_LOOKBACK_MIN, type CoolingReading } from "./coolin
  */
 
 const minutesBetween = (a: Date, b: Date) => Math.max(0, Math.round((b.getTime() - a.getTime()) / 60_000));
+
+/**
+ * What each unit was last seen doing — for the two temperatures an alert records when it opens
+ * and when it closes. An offline alert is the case that needs this: by definition no reading
+ * arrived to carry the numbers in, so the last one known is what the history gets. A unit that
+ * has never reported has none, and the columns stay empty, which the spec allows for.
+ */
+async function lastReadings(unitIds: string[]): Promise<Map<string, { tempF: number; probeTempF: number | null }>> {
+  const out = new Map<string, { tempF: number; probeTempF: number | null }>();
+  await Promise.all(
+    unitIds.map(async (unitId) => {
+      const r = await prisma.reading.findFirst({
+        where: { unitId },
+        orderBy: { measuredAt: "desc" },
+        select: { tempF: true, probeTempF: true },
+      });
+      if (r) out.set(unitId, r);
+    }),
+  );
+  return out;
+}
 
 function fireAndForget(p: Promise<unknown>) {
   p.catch((err) => console.error("[alerts] background task failed:", err));
@@ -163,6 +185,9 @@ async function processTempReading(unit: UnitWithLocation, reading: NewReading, n
           type: "temp_out_of_range",
           openedAt,
           peakTempF: decision.peakTempF,
+          // Cold storage is judged by its probe, so that is what goes in the "room" column:
+          // it is the number the verdict was made on. There is no duct on a walk-in.
+          roomAtOpenF: reading.tempF,
         },
       });
       publish({
@@ -220,7 +245,7 @@ async function processTempReading(unit: UnitWithLocation, reading: NewReading, n
       const shouldNotify = canNotify(openAlert.lastNotifiedAt, now);
       const resolved = await prisma.alert.update({
         where: { id: openAlert.id },
-        data: { resolvedAt: reading.measuredAt },
+        data: { resolvedAt: reading.measuredAt, roomAtCloseF: reading.tempF },
       });
       publish({
         type: "alert",
@@ -311,8 +336,10 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
         unitId: unit.id,
         type: "not_cooling",
         openedAt,
-        // The room at the moment it was called: what the card and the history show for this alert.
-        peakTempF: reading.tempF,
+        // Both numbers, because neither explains an air conditioner on its own: the verdict
+        // was the distance between them.
+        roomAtOpenF: reading.tempF,
+        ductAtOpenF: ductF,
       },
     });
     publish({
@@ -348,7 +375,7 @@ async function processCoolingReading(unit: UnitWithLocation, reading: NewReading
     const shouldNotify = openAlert.lastNotifiedAt !== null;
     const resolved = await prisma.alert.update({
       where: { id: openAlert.id },
-      data: { resolvedAt: reading.measuredAt },
+      data: { resolvedAt: reading.measuredAt, roomAtCloseF: reading.tempF, ductAtCloseF: ductF },
     });
     publish({
       type: "alert",
@@ -407,10 +434,20 @@ export async function resolveOfflineForSensor(sensorId: string, now: Date = new 
   // flood in green.
   const shouldNotify = open.some((a) => a.lastNotifiedAt !== null);
 
-  await prisma.alert.updateMany({
-    where: { id: { in: open.map((a) => a.id) } },
-    data: { resolvedAt: now },
-  });
+  // The device has just spoken, so the newest reading is what it came back saying.
+  const back = await lastReadings([...new Set(open.map((a) => a.unitId))]);
+  await Promise.all(
+    open.map((a) =>
+      prisma.alert.update({
+        where: { id: a.id },
+        data: {
+          resolvedAt: now,
+          roomAtCloseF: back.get(a.unitId)?.tempF ?? null,
+          ductAtCloseF: back.get(a.unitId)?.probeTempF ?? null,
+        },
+      }),
+    ),
+  );
 
   for (const a of open) {
     publish({
@@ -517,6 +554,9 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
       const willNotify = settled && (locationWide ? !locationNotified.has(sensor.locationId) : true);
       if (locationWide && willNotify) locationNotified.add(sensor.locationId);
 
+      // Silence is the only cause this loop can see; the readings-based ones (a disconnected
+      // probe, an impossible number, a device that has frozen) are judged where readings arrive.
+      const lastSeen = await lastReadings(missing.map((u) => u.id));
       const created = await Promise.all(
         missing.map((u) =>
           prisma.alert.create({
@@ -524,6 +564,9 @@ export async function runOfflineCheck(now: Date = new Date()): Promise<OfflineCh
               unitId: u.id,
               type: "offline",
               openedAt: sensor.lastSeenAt ?? now,
+              error: ALERT_ERROR.noData,
+              roomAtOpenF: lastSeen.get(u.id)?.tempF ?? null,
+              ductAtOpenF: lastSeen.get(u.id)?.probeTempF ?? null,
             },
           }),
         ),

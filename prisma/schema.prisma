@@ -130,6 +130,7 @@ model User {
   unitChanges  UnitChange[]
   unitPhotos   UnitPhoto[]
   passportEdits Unit[] @relation("PassportUpdates")
+  alertComments Alert[] @relation("AlertComments")
 
   @@index([organizationId])
 }
@@ -386,6 +387,10 @@ model Reading {
   @@index([unitId, measuredAt(sort: Desc)])
 }
 
+/// One episode of trouble on one unit, from the moment it was recognised to the moment it
+/// ended. The temperatures either side are kept because the alert history has to answer "what
+/// was it actually doing", and an AC cannot answer that with one number: the whole judgement
+/// is the difference between the room and the duct.
 model Alert {
   id             String    @id @default(cuid())
   unitId         String
@@ -393,7 +398,25 @@ model Alert {
   type           AlertType
   openedAt       DateTime  @default(now()) @db.Timestamptz(6)
   resolvedAt     DateTime? @db.Timestamptz(6)
+  /// The furthest a cold-storage reading strayed from its band during the episode. Not written
+  /// for an AC, which is judged by the drop across it rather than by how warm the room got.
   peakTempF      Float?
+  /// What the unit was judged by when the alert opened and when it closed: the room for an AC,
+  /// the probe for cold storage. Null when no reading was to hand at that moment, which is the
+  /// ordinary case for an offline alert on a unit that has never reported.
+  roomAtOpenF    Float?
+  roomAtCloseF   Float?
+  /// Air leaving the duct at those same two moments. Only an AC has one.
+  ductAtOpenF    Float?
+  ductAtCloseF   Float?
+  /// Why the unit was judged untrustworthy, for an offline alert: 21 probe disconnected,
+  /// 31 no data, 41 impossible reading, 51 readings not changing. See alerts/codes.ts.
+  error          Int?
+  /// A technician's note on the episode. Nothing writes these yet — the client's spec asks for
+  /// the columns now and the screen later.
+  comment        String?
+  commentById    String?
+  commentBy      User?     @relation("AlertComments", fields: [commentById], references: [id], onDelete: SetNull)
   lastNotifiedAt DateTime? @db.Timestamptz(6)
 
   @@index([unitId, resolvedAt])
