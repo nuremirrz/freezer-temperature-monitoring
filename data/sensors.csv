@@ -90,3 +90,21 @@ Burger King #835,A84041DE816251AF,bk835-rosecrans-sd-ac1-kitchen,LHT65N,300,1,AC
 Burger King #835,A84041CA1A634EA5,bk835-rosecrans-sd-ac2-kitchen,LHT65N,300,1,AC2 - Kitchen,LHT65N,AC2-kitchen
 Burger King #835,A84041699F6251B0,bk835-rosecrans-sd-ac3-dining,LHT65N,300,1,AC3 - Dining,LHT65N,AC3-dining
 Burger King #835,A8404158B3634EA7,bk835-rosecrans-sd-ac5-dinning,LHT65N,300,1,AC5 - Dining,LHT65N,AC5-dining
+
+# BK692 Bellflower — 10134 Artesia Blvd, Bellflower, CA 90706 (gateway A84041FDFE2EA8CA, LPS8)
+# Source: "Qimby units list (4).xlsx", sheet Sensors, 20 Oct 2026.
+#
+# The first LSN50-D23 nodes in the fleet: three DS18B20 jacks, two used, as Sanjar described on
+# 20 Oct. On the walk-in device channel 2 is the cooler and channel 3 the freezer — confirmed by
+# the first packets, 37.6 °F and 2.7 °F. Channel 1 is a room probe nobody asked for; it is left
+# unmapped on purpose and the row below records that rather than leaving it a mystery.
+Burger King #692,A840419FAB622FE1,bk692-bellflower-wic-f,LSN50-D23,300,1,,LSN50 v2-D23,wic-f ch1 room — unused
+Burger King #692,A840419FAB622FE1,bk692-bellflower-wic-f,LSN50-D23,300,2,Walk-in Cooler,LSN50 v2-D23,wic-f ch2 cooler
+Burger King #692,A840419FAB622FE1,bk692-bellflower-wic-f,LSN50-D23,300,3,Walk-in Freezer,LSN50 v2-D23,wic-f ch3 freezer
+# AC3 is the other LSN50: channel 2 is the room it cools, channel 3 the duct. Only the room gets
+# a row — the duct is read as the sensor's other reporting probe, the same way Whittier's LTC2
+# air conditioners work.
+Burger King #692,A84041AA17622FE0,bk692-bellflower-ac3-dining-triple,LSN50-D23,300,2,AC3 - Dining,LSN50 v2-D23,AC3-dining ch2 room ch3 duct
+Burger King #692,A8404119956251AD,bk692-bellflower-ac1-kitchen,LHT65N,300,1,AC1 - Kitchen,LHT65N,AC1-kitchen
+Burger King #692,A8404113C85E2B77,bk692-bellflower-ac2-dining,LHT65N,300,1,AC2 - Dining,LHT65S-NE117,AC2-dining
+Burger King #692,A8404100BB6251B3,bk692-bellflower-ac4-kitchen,LHT65N,300,1,AC4 - Kitchen,LHT65N,AC4-kitchen

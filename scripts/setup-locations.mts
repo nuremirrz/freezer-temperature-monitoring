@@ -164,6 +164,32 @@ const LOCATIONS: LocationSeed[] = [
       { name: "AC5 - Dining", ...AC_DINING },
     ],
   },
+  {
+    name: "Burger King #692",
+    address: "10134 Artesia Blvd",
+    city: "Bellflower",
+    state: "CA",
+    zip: "90706",
+    // Census geocoder, 20 Oct 2026: 10134 ARTESIA BLVD, BELLFLOWER, CA, 90706
+    lat: 33.8728713,
+    lng: -118.1183657,
+    timezone: "America/Los_Angeles",
+    // "Qimby units list (4).xlsx", sheet Gateway (20 Oct 2026), LPS8.
+    gateway: { ttnGatewayId: "a84041fdfe2ea8ca", eui: "A84041FDFE2EA8CA" },
+    // Five sensors, and the first two LSN50-D23 in the fleet — three DS18B20 jacks each, two
+    // of them used. The walk-in device carries both cold rooms on one radio (channel 2 the
+    // cooler at 37.6 °F, channel 3 the freezer at 2.7 °F in the first packets), and AC3 carries
+    // its own room on channel 2 and its duct on channel 3. The spare jack on each is bare and
+    // reports Dragino's disconnected sentinel, which the parser drops.
+    units: [
+      { name: "Walk-in Cooler", ...COOLER },
+      { name: "Walk-in Freezer", ...FREEZER },
+      { name: "AC1 - Kitchen", ...AC_KITCHEN },
+      { name: "AC2 - Dining", ...AC_DINING },
+      { name: "AC3 - Dining", ...AC_DINING },
+      { name: "AC4 - Kitchen", ...AC_KITCHEN },
+    ],
+  },
 ];
 
 const forceRanges = process.argv.includes("--ranges");
