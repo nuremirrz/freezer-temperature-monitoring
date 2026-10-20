@@ -50,3 +50,33 @@ describe("what an uplink means for the units on the sensor", () => {
     expect(r.unmapped).toEqual([2]);
   });
 });
+
+/**
+ * Bellflower's two LSN50-D23 nodes, each using two of its three jacks — the first devices in
+ * the fleet where the channel numbers are not simply 1 and 2.
+ */
+describe("a three-probe node", () => {
+  it("gives the walk-in device's two units a probe each, and no duct", () => {
+    const out = readingsFromUplink(
+      { channels: [{ channel: 1, tempF: 70.7 }, { channel: 2, tempF: 37.58 }, { channel: 3, tempF: 2.66 }] },
+      [
+        { channel: 2, unitId: "cooler", unitType: "walk_in_cooler" },
+        { channel: 3, unitId: "freezer", unitType: "walk_in_freezer" },
+      ],
+    );
+    expect(out.readings).toEqual([
+      { unitId: "cooler", channel: 2, tempF: 37.58, probeTempF: null },
+      { unitId: "freezer", channel: 3, tempF: 2.66, probeTempF: null },
+    ]);
+    // The spare jack is wired to nothing and says so rather than going unnoticed
+    expect(out.unmapped).toEqual([1]);
+  });
+
+  it("reads an AC's room from its own jack and the duct from the other", () => {
+    // Channel 1 is a bare socket, dropped by the parser before it reaches here
+    const out = readingsFromUplink({ channels: [{ channel: 2, tempF: 58.46 }, { channel: 3, tempF: 43.88 }] }, [
+      { channel: 2, unitId: "ac3", unitType: "ac" },
+    ]);
+    expect(out.readings).toEqual([{ unitId: "ac3", channel: 2, tempF: 58.46, probeTempF: 43.88 }]);
+  });
+})

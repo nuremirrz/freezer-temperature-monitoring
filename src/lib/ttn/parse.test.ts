@@ -346,3 +346,70 @@ describe("fields the parser did not read", () => {
     expect(r.ok && r.uplink.unreadFields).toEqual([]);
   });
 });
+
+/**
+ * Bellflower, wired 19–20 Oct 2026, brought the first three-probe node into the fleet. These
+ * payloads are the ones production actually received, copied from UnknownUplink — the fields
+ * were read off a real packet rather than guessed, because guessing at TempF_DS cost San
+ * Bernardino a day of duct readings in October.
+ */
+describe("LSN50-D23, three probes and a spare jack", () => {
+  const uplink = (deviceId: string, decoded: Record<string, unknown>) => ({
+    end_device_ids: { device_id: deviceId, dev_eui: "A840419FAB622FE1" },
+    uplink_message: { decoded_payload: { BatV: 3.649, Node_type: "LSN50-D23", Work_mode: "3DS18B20", ...decoded } },
+  });
+
+  it("reads the walk-in device's cooler and freezer, and the room probe beside them", () => {
+    const r = parseTtnUplink(
+      uplink("bk692-bellflower-wic-f", {
+        TempC1: 21.5, TempC2: 3.1, TempC3: -16.3,
+        TempF1: 70.7, TempF2: 37.58, TempF3: 2.66,
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uplink.nodeType).toBe("LSN50-D23");
+    expect(r.uplink.unsupportedNodeType).toBe(false);
+    expect(r.uplink.channels).toEqual([
+      { channel: 1, tempF: 70.7 },
+      { channel: 2, tempF: 37.58 },
+      { channel: 3, tempF: 2.66 },
+    ]);
+  });
+
+  it("drops the spare jack, which reports a sentinel ten times the LHT65's", () => {
+    // AC3's third probe is simply not there: TempC1 3276.7 is 0x7FFF with the decimal point
+    // one place to the right of where the LHT65 family puts it
+    const r = parseTtnUplink(
+      uplink("bk692-bellflower-ac3-dining-triple", {
+        TempC1: 3276.7, TempC2: 14.7, TempC3: 6.6,
+        TempF1: 5930.06, TempF2: 58.46, TempF3: 43.88,
+      }),
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.uplink.channels).toEqual([
+      { channel: 2, tempF: 58.46 },
+      { channel: 3, tempF: 43.88 },
+    ]);
+    expect(r.uplink.skippedChannels).toEqual([1]);
+  });
+
+  it("recognises the node from its fields when the decoder does not name it", () => {
+    const r = parseTtnUplink({
+      end_device_ids: { dev_eui: "A840419FAB622FE1" },
+      uplink_message: { decoded_payload: { TempF1: 70.7, TempF2: 37.58, TempF3: 2.66 } },
+    });
+    expect(r.ok && r.uplink.nodeType).toBe("LSN50-D23");
+  });
+
+  it("says nothing is unread, now that the fields are known", () => {
+    const r = parseTtnUplink(
+      uplink("bk692-bellflower-wic-f", {
+        TempC1: 21.5, TempC2: 3.1, TempC3: -16.3,
+        TempF1: 70.7, TempF2: 37.58, TempF3: 2.66,
+      }),
+    );
+    expect(r.ok && r.uplink.unreadFields).toEqual([]);
+  });
+})

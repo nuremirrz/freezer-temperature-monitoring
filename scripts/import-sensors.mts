@@ -1,6 +1,9 @@
 import "./load-env";
 import { readFileSync } from "node:fs";
 import { prodIfAsked } from "./prod-url";
+// The one list of node types the parser can actually read. Keeping a second copy here is how a
+// device the ingest understands perfectly would be refused by the importer, or the reverse.
+import { SUPPORTED_NODE_TYPES } from "../src/lib/ttn/parse";
 
 /**
  * Applies data/sensors.csv to the database: creates or updates each sensor and
@@ -58,11 +61,14 @@ text.split(/\r?\n/).forEach((raw, i) => {
   const [location, devEui, deviceId, nodeType, interval, channel, unit, model = "", label = ""] = cells;
 
   if (!/^[0-9A-Fa-f]{16}$/.test(devEui)) problems.push(`line ${line}: dev_eui "${devEui}" is not 16 hex characters`);
-  if (!["1", "2"].includes(channel)) problems.push(`line ${line}: channel must be 1 or 2, got "${channel}"`);
-  if (nodeType && !["LTC2", "LHT65N"].includes(nodeType.toUpperCase()))
-    problems.push(`line ${line}: unknown node_type "${nodeType}"`);
-  if (nodeType.toUpperCase() === "LHT65N" && channel === "2")
-    problems.push(`line ${line}: LHT65N has a single probe, channel 2 is not possible`);
+  if (!["1", "2", "3"].includes(channel)) problems.push(`line ${line}: channel must be 1, 2 or 3, got "${channel}"`);
+  const type = nodeType.toUpperCase();
+  if (nodeType && !SUPPORTED_NODE_TYPES.some((t) => t.toUpperCase() === type))
+    problems.push(`line ${line}: unknown node_type "${nodeType}" (known: ${SUPPORTED_NODE_TYPES.join(", ")})`);
+  if (type === "LHT65N" && channel !== "1")
+    problems.push(`line ${line}: LHT65N has a single probe, only channel 1 is possible`);
+  if (type === "LTC2" && channel === "3")
+    problems.push(`line ${line}: LTC2 has two probes, channel 3 is not possible`);
 
   rows.push({
     line,

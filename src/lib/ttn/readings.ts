@@ -13,6 +13,8 @@ import type { ParsedUplink } from "./parse";
  *              fine: the room is what counts, the duct line on the chart simply stays empty.
  *   LTC2     — no built-in sensor, two external probes. The probe wired to the unit is the
  *              room; the other probe is the duct.
+ *   LSN50-D23 — no built-in sensor either, three external probes, and the same rule: the probe
+ *              wired to the unit is the room, the other reporting one is the duct.
  *
  * Cold storage is the probe itself. A probe that reports nothing (unplugged, or the Dragino
  * "not connected" sentinel) yields no reading rather than a wrong one.
@@ -64,7 +66,12 @@ export function readingsFromUplink(
       noRoomTemp.push(m.channel);
       continue;
     }
-    const other = u.channels.find((c) => c.channel !== m.channel)?.tempF ?? null;
+    // "The other probe" is the duct. With two jacks that is unambiguous; Bellflower's AC3 has
+  // three, and it works there only because the spare jack reports a disconnected sentinel and
+  // never reaches this list. Plug a probe into that jack and this would pick it over the duct.
+  // Worth replacing with a column in data/sensors.csv that says which channel the duct is —
+  // the same lesson as the reporting interval, which also used to be inferred and went stale.
+  const other = u.channels.find((c) => c.channel !== m.channel)?.tempF ?? null;
     readings.push({ unitId: m.unitId, channel: m.channel, tempF: probe, probeTempF: other });
   }
 

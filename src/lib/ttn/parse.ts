@@ -6,6 +6,11 @@ import { z } from "zod";
  *  - LTC2   — two external probes: TempF_Channel1 / TempF_Channel2 → channels 1 and 2
  *  - LHT65N — one external probe (TempF_TMP117, or TempF_DS for a DS18B20 → channel 1) plus a built-in air sensor
  *             (TempF_SHT / Hum_SHT → ambient values on the Sensor, never a Reading)
+ *  - LSN50-D23 — three external DS18B20 probes: TempF1 / TempF2 / TempF3 → channels 1, 2 and 3.
+ *             No built-in air sensor. Bellflower runs two of these, each using two of the three
+ *             jacks: the walk-in device has the cooler on 2 and the freezer on 3, and AC3 has
+ *             the room on 2 and the duct on 3. The spare jack reports Dragino's disconnected
+ *             sentinel and is dropped like any other empty probe.
  *
  * The branch is chosen by `decoded_payload.Node_type`; when it is missing we infer it
  * from the fields present. An unknown Node_type parses fine but yields no channels and
@@ -16,9 +21,9 @@ import { z } from "zod";
  * The body may be the raw TTN webhook or wrapped in `{ data: ... }`.
  */
 
-export type Channel = 1 | 2;
-export type NodeType = "LTC2" | "LHT65N";
-export const SUPPORTED_NODE_TYPES: readonly NodeType[] = ["LTC2", "LHT65N"];
+export type Channel = 1 | 2 | 3;
+export type NodeType = "LTC2" | "LHT65N" | "LSN50-D23";
+export const SUPPORTED_NODE_TYPES: readonly NodeType[] = ["LTC2", "LHT65N", "LSN50-D23"];
 
 export interface ParsedChannel {
   channel: Channel;
@@ -89,6 +94,13 @@ const decodedPayloadSchema = z.looseObject({
   TempF_SHT: num,
   TempC_SHT: num,
   Hum_SHT: num,
+  // LSN50-D23 — three DS18B20 jacks, numbered the way the channels are
+  TempC1: num,
+  TempC2: num,
+  TempC3: num,
+  TempF1: num,
+  TempF2: num,
+  TempF3: num,
 });
 type DecodedPayload = z.infer<typeof decodedPayloadSchema>;
 
@@ -121,9 +133,14 @@ const uplinkSchema = z.looseObject({
     .optional(),
 });
 
-/** Dragino reports these when a probe is not connected. */
-const PLACEHOLDER_C = [327.67, -0.01];
-const PLACEHOLDER_F = PLACEHOLDER_C.map(cToF); // 621.806, 31.982
+/**
+ * Dragino reports these when a probe is not connected. The value depends on where the decoder
+ * puts the decimal point: the LHT65 family divides the raw 0x7FFF by 100 and the LSN50-D23 by
+ * 10, so the same empty jack reads 327.67 on one and 3276.7 on the other. Bellflower's AC3 has
+ * a spare third jack reporting exactly 3276.7 every five minutes.
+ */
+const PLACEHOLDER_C = [327.67, 3276.7, -0.01];
+const PLACEHOLDER_F = PLACEHOLDER_C.map(cToF); // 621.806, 5930.06, 31.982
 
 export function cToF(c: number): number {
   return c * (9 / 5) + 32;
@@ -155,6 +172,7 @@ export function detectNodeType(payload: DecodedPayload | undefined): string | un
   const has = (k: keyof DecodedPayload) => payload[k] !== undefined;
   if (has("TempF_Channel1") || has("TempF_Channel2") || has("Temp_Channel1") || has("Temp_Channel2")) return "LTC2";
   if (has("TempF_TMP117") || has("TempC_TMP117") || has("TempF_DS") || has("TempC_DS") || has("TempF_SHT") || has("TempC_SHT") || has("Hum_SHT")) return "LHT65N";
+  if (has("TempF1") || has("TempF2") || has("TempF3") || has("TempC1") || has("TempC2") || has("TempC3")) return "LSN50-D23";
   return undefined;
 }
 
@@ -237,6 +255,13 @@ export function parseTtnUplink(body: unknown, now: Date = new Date()): ParseResu
       ambientTempF = tempF(payload?.TempF_SHT, payload?.TempC_SHT);
       ambientHum = payload?.Hum_SHT;
       break;
+    case "LSN50-D23":
+      // Three jacks, nothing built in. Which probe means what is the installer's business and
+      // lives in data/sensors.csv; here they are simply channels 1, 2 and 3.
+      takeProbe(1, payload?.TempC1, payload?.TempF1, channels, skippedChannels);
+      takeProbe(2, payload?.TempC2, payload?.TempF2, channels, skippedChannels);
+      takeProbe(3, payload?.TempC3, payload?.TempF3, channels, skippedChannels);
+      break;
     default:
       unsupportedNodeType = true;
   }
@@ -271,6 +296,7 @@ export function parseTtnUplink(body: unknown, now: Date = new Date()): ParseResu
 const READ_FIELDS: Record<string, readonly string[]> = {
   LTC2: ["TempF_Channel1", "TempF_Channel2", "Temp_Channel1", "Temp_Channel2"],
   LHT65N: ["TempF_TMP117", "TempC_TMP117", "TempF_DS", "TempC_DS", "TempF_SHT", "TempC_SHT", "Hum_SHT"],
+  "LSN50-D23": ["TempC1", "TempC2", "TempC3", "TempF1", "TempF2", "TempF3"],
 };
 const MEASUREMENT_RE = /^(temp|hum)/i;
 
