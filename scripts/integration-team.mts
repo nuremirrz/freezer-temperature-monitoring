@@ -618,6 +618,18 @@ await clearAc();
 await feed(acUnit.id, laAt(10, 0), laAt(14, 0), 5, 99, 70);
 check("кондиционер больше не поднимает temp_out_of_range", (await openOn(acUnit.id, "temp_out_of_range")) === 0);
 
+// Уиттиер, AC2, 22 окт: прохладная комната при холодном дакте не должна запирать счётчик
+await clearAc();
+await feed(acUnit.id, laAt(13, 15), laAt(14, 0), 5, 84, 82);
+check("авария открылась", (await openOn(acUnit.id, "not_cooling")) === 1);
+acHeard.length = 0;
+await feed(acUnit.id, laAt(14, 5), laAt(15, 10), 5, 72.3, 46.6);
+check("час холода при прохладной комнате — тревога закрыта", (await openOn(acUnit.id, "not_cooling")) === 0, acMine().join(" | "));
+const acRowsBefore = await prisma.alert.count({ where: { unitId: acUnit.id, type: "not_cooling" } });
+await feed(acUnit.id, laAt(15, 15), laAt(15, 40), 5, 72.3, 46.6);
+const acRowsAfter = await prisma.alert.count({ where: { unitId: acUnit.id, type: "not_cooling" } });
+check("и не открывается заново следующим замером", (await openOn(acUnit.id, "not_cooling")) === 0 && acRowsAfter === acRowsBefore, `строк было ${acRowsBefore}, стало ${acRowsAfter}`);
+
 // Перегретый щуп при жаре — не отопление, а неработающий юнит (Санжар, 20 окт)
 await clearAc();
 acHeard.length = 0;

@@ -191,6 +191,37 @@ describe("the alert counter", () => {
     expect(c.startedAt).toBe(at("13:00"));
   });
 
+  /**
+   * Whittier's AC2, 22 Oct 2026. The room sat at 72 °F — under its 80 °F threshold — while the
+   * duct blew 46 °F, a drop of 26. The reset was read off the substatus, and `cooling` needs a
+   * warm room, so the count froze at its old 45 minutes instead of clearing. The recovery
+   * counter, which looks at ΔT alone, closed the alert; this counter reopened it from the same
+   * stale run on the very next reading; and the pair flapped every ten minutes for three hours,
+   * announcing each one to the group.
+   */
+  it("is wiped by the drop even when the room is too cool to be judged", () => {
+    const COLD_DUCT = { tempF: 72.3, probeTempF: 46.6 }; // the real numbers
+    const readings = [...series("13:40", 9, 5, BROKEN), ...series("15:00", 16, 5, COLD_DUCT)];
+    const c = alertCounter(readings, KITCHEN);
+    expect(c.minutes).toBe(0);
+    expect(c.startedAt).toBeNull();
+    // And so the alert cannot reopen the moment the recovery counter has closed it
+    expect(evaluateCooling({ readings, ctx: KITCHEN, openAlert: null }).action).toBe("none");
+  });
+
+  it("still freezes for a cool room that has no drop to show for it", () => {
+    // The freeze clause is for what is left over: under the threshold and not cooling either
+    const c = alertCounter([...series("13:40", 9, 5, BROKEN), ...series("15:00", 16, 5, COOL_ROOM)], KITCHEN);
+    expect(c.minutes).toBe(40);
+    expect(c.startedAt).toBe(at("13:00"));
+  });
+
+  it("is wiped by a drop at an hour nobody is judging, too", () => {
+    // A unit demonstrably making cold air at three in the morning is not a unit that is failing
+    const night = Array.from({ length: 6 }, (_, i) => ({ tempF: 70, probeTempF: 55, measuredAt: at("03:00") + i * 5 * 60_000 }));
+    expect(alertCounter([...series("02:00", 9, 5, BROKEN), ...night], KITCHEN).minutes).toBe(0);
+  });
+
   it("starts over every morning at 07:30", () => {
     const readings = [
       { ...BROKEN, measuredAt: yesterday("22:00") },

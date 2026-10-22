@@ -182,7 +182,18 @@ export function alertCounter(readings: CoolingReading[], ctx: CoolingContext): A
   for (const r of readings) {
     if (r.measuredAt < dayStart) continue;
     const s = substatusOf(r, ctx);
-    if (s === "cooling") {
+    // The drop wipes the count, whatever the room is doing. The spec ties the reset to ΔT and
+    // to nothing else — "обнуляется, если ΔT ≥ 12°F" — and the freeze clause below is only for
+    // what is left over, a cool room with no drop to show for it.
+    //
+    // Reading the reset off the substatus instead cost us a day: `cooling` needs the room at
+    // or above its threshold, so a unit blowing air 25 °F colder than a 72 °F kitchen was
+    // frozen at its old 45 minutes rather than cleared. The recovery counter, which does look
+    // at ΔT alone, closed the alert; this one promptly reopened it from the same stale run;
+    // and Whittier's AC2 opened and closed every ten minutes for three hours, announcing each
+    // one. See alertCounter's tests for the exact case.
+    const drop = coolingDrop(r);
+    if (drop !== null && drop >= COOLING_DROP_F) {
       minutes = 0;
       startedAt = null;
       prevFailing = false;
