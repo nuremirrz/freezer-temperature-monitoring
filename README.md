@@ -230,6 +230,7 @@ rate-limited per IP and reject cross-site origins.
 | `npm run sensors:import -- --dry-run` | validate `data/sensors.csv`, the probe-to-equipment map, and preview; without the flag, apply it; `--location "…"` writes one restaurant's sensors only; `--prod` asks for the production URL, typed blind |
 | `npm run sensors:unknown` | devices talking to us without a mapping: type, last temperatures per channel; `--prod` asks for the production URL |
 | `npm run weather:backfill -- --days 365 --prod` | outdoor temperature history for every open restaurant, hourly, from Open-Meteo; safe to repeat; `--prod` asks for the production URL |
+| `npm run weather:gaps -- --prod --days 10` | quarter-hour weather samples that never landed, per day. Zero is the normal answer; it was 2–4% a day until 20 Oct 2026 |
 | `npm run sensors:intervals` | gaps between uplinks over the last 24 h: the usual one, the worst one, and how many crossed the offline threshold. A threshold at or below the usual step means a false alert every cycle; a worst gap above it means one false alert per dropout. `--prod` asks for the production URL |
 | `npm run chart:check` | per unit: readings in the last day and week, the latest value, the duct beside the room for an AC |
 | `npm run db:sequences [-- --fix]` | the id counters against the rows they number; a restore leaves them behind |
