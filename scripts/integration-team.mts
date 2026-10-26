@@ -524,14 +524,14 @@ const acStop = async () => { await new Promise((res) => setTimeout(res, 300)); c
 const acMine = () => acHeard.filter((l) => l.includes("AC Restaurant"));
 
 /** Writes a stretch of readings for a unit and evaluates the last one, as ingest would. */
-async function feed(unitId: string, from: Date, to: Date, everyMin: number, tempF: number, probeTempF: number | null) {
+async function feed(unitId: string, from: Date, to: Date, everyMin: number, tempF: number, probeTempF: number | null, channel = 1) {
   let last = from;
   for (let t = from.getTime(); t <= to.getTime(); t += everyMin * 60_000) {
     last = new Date(t);
-    await prisma.reading.create({ data: { unitId, sensorId: acSensor.id, channel: 1, tempF, probeTempF, measuredAt: last } });
+    await prisma.reading.create({ data: { unitId, sensorId: acSensor.id, channel, tempF, probeTempF, measuredAt: last } });
   }
   acListen();
-  await processNewReading({ unitId, sensorId: acSensor.id, channel: 1, tempF, measuredAt: last });
+  await processNewReading({ unitId, sensorId: acSensor.id, channel, tempF, measuredAt: last });
   await acStop();
 }
 const openOn = (unitId: string, type: "not_cooling" | "temp_out_of_range" | "offline") =>
@@ -683,6 +683,48 @@ check("морозильник по-прежнему судится по свое
 const wifAlert = await prisma.alert.findFirst({ where: { unitId: wifUnit.id, type: "temp_out_of_range" } });
 check("у холодильной тревоги тоже записана температура, но без дакта", wifAlert?.roomAtOpenF === 25 && wifAlert?.ductAtOpenF === null, `${wifAlert?.roomAtOpenF}/${wifAlert?.ductAtOpenF}`);
 check("и ни одной not_cooling на холодильном оборудовании", (await prisma.alert.count({ where: { unitId: wifUnit.id, type: "not_cooling" } })) === 0);
+
+console.log("\n=== холодильное оборудование: два часа на вход, два на выход ===");
+// Карточка клиента от 26 окт: тревога только если держится выше линии два часа подряд, и
+// снимается только если два часа подряд держалась ниже. Оттайка пересекает линию на двадцать
+// минут несколько раз в неделю — раньше каждая такая была сообщением.
+const coldUnit = await prisma.unit.create({
+  data: { locationId: acLoc.id, type: "walk_in_freezer", name: "WIF two-hour", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 29 },
+});
+await prisma.sensorChannel.create({ data: { sensorId: acSensor.id, channel: 3, unitId: coldUnit.id } });
+const coldOpen = () => prisma.alert.count({ where: { unitId: coldUnit.id, type: "temp_out_of_range", resolvedAt: null } });
+const coldRows = () => prisma.alert.count({ where: { unitId: coldUnit.id, type: "temp_out_of_range" } });
+
+// Оттайка: сорок минут выше линии и обратно — молчим
+await feed(coldUnit.id, laAt(10, 0), laAt(10, 40), 5, 34, null, 3);
+check("оттайка на сорок минут выше линии — не тревога", (await coldOpen()) === 0);
+await feed(coldUnit.id, laAt(10, 45), laAt(11, 0), 5, -5, null, 3);
+
+// Настоящая авария: два часа подряд
+await feed(coldUnit.id, laAt(12, 0), laAt(13, 55), 5, 34, null, 3);
+check("час пятьдесят пять выше линии — ещё не тревога", (await coldOpen()) === 0);
+acHeard.length = 0;
+await feed(coldUnit.id, laAt(14, 0), laAt(14, 0), 5, 34, null, 3);
+check("ровно два часа — тревога и одно сообщение", (await coldOpen()) === 1 && acMine().length === 1, acMine().join(" | "));
+
+// Вернулось под линию — но часа мало
+await feed(coldUnit.id, laAt(14, 5), laAt(15, 5), 5, 2, null, 3);
+check("час под линией — тревога ещё держится", (await coldOpen()) === 1);
+
+// Два часа под линией — снимается
+//
+// Зелёное сообщение здесь не проверяем, и это ограничение сценария, а не поведения. Остыв
+// уведомлений у холодильного оборудования считается по настоящим часам от момента доставки
+// красного, а сценарий проигрывает сутки за секунду — в проде между открытием и закрытием
+// минимум четыре часа, и остыв в тридцать минут не может сработать вовсе.
+acHeard.length = 0;
+await feed(coldUnit.id, laAt(15, 10), laAt(16, 5), 5, 2, null, 3);
+check("два часа под линией — тревога снята", (await coldOpen()) === 0);
+
+// И не открывается заново от того же прогона
+const coldBefore = await coldRows();
+await feed(coldUnit.id, laAt(16, 10), laAt(16, 30), 5, 2, null, 3);
+check("после снятия заново не открывается", (await coldOpen()) === 0 && (await coldRows()) === coldBefore, `строк было ${coldBefore}`);
 
 console.log(`\n${failed === 0 ? "✓" : "✗"} прошло ${passed}, упало ${failed}`);
 await wipe();

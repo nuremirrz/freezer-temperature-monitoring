@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   alertRange,
   evaluateTempReading,
-  isBackInRange,
   isOutOfRange,
   isSensorOffline,
   offlineAfterSec,
@@ -17,40 +16,40 @@ const AC = { rangeMinF: 55, rangeMaxF: 58 };
 describe("temp out of range — opening", () => {
   it("ignores a single spike: the first bad reading has no elapsed time behind it", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 15, outOfRangeForMin: 0, runPeakTempF: 15, openAlert: null }),
+      evaluateTempReading({ ...FREEZER, current: 15, outOfRangeForMin: 0, runPeakTempF: 15, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "none" });
   });
 
-  it("stays quiet while the temperature has been out of range for less than an hour", () => {
+  it("stays quiet while the temperature has been out of range for less than two hours", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 15, outOfRangeForMin: 40, runPeakTempF: 15, openAlert: null }),
+      evaluateTempReading({ ...FREEZER, current: 15, outOfRangeForMin: 40, runPeakTempF: 15, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "none" });
     expect(
-      evaluateTempReading({ ...FREEZER, current: 15, outOfRangeForMin: 59.9, runPeakTempF: 15, openAlert: null }),
+      evaluateTempReading({ ...FREEZER, current: 15, outOfRangeForMin: 119.9, runPeakTempF: 15, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "none" });
   });
 
-  it("opens at a full hour, keeping the worst reading of the run as peak", () => {
+  it("opens at a full two hours, keeping the worst reading of the run as peak", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 12.1, outOfRangeForMin: 60, runPeakTempF: 15.2, openAlert: null }),
+      evaluateTempReading({ ...FREEZER, current: 12.1, outOfRangeForMin: 120, runPeakTempF: 15.2, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "open", peakTempF: 15.2 });
   });
 
   it("opens for readings below the range as well", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: -12, outOfRangeForMin: 75, runPeakTempF: -13, openAlert: null }),
+      evaluateTempReading({ ...FREEZER, current: -12, outOfRangeForMin: 130, runPeakTempF: -13, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "open", peakTempF: -13 });
   });
 
   it("never opens while the reading is inside the range, however long the run", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 4, outOfRangeForMin: 180, runPeakTempF: 15, openAlert: null }),
+      evaluateTempReading({ ...FREEZER, current: 4, outOfRangeForMin: 180, runPeakTempF: 15, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "none" });
   });
 
   it("falls back to the current reading when the run has no peak", () => {
     expect(
-      evaluateTempReading({ ...AC, current: 61, outOfRangeForMin: 60, runPeakTempF: null, openAlert: null }),
+      evaluateTempReading({ ...AC, current: 61, outOfRangeForMin: 120, runPeakTempF: null, backInRangeForMin: 0, openAlert: null }),
     ).toEqual({ action: "open", peakTempF: 61 });
   });
 });
@@ -58,52 +57,56 @@ describe("temp out of range — opening", () => {
 describe("temp out of range — while open", () => {
   it("updates the peak when it gets worse", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 18, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 15 } }),
+      evaluateTempReading({ ...FREEZER, current: 18, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 0, openAlert: { peakTempF: 15 } }),
     ).toEqual({ action: "update", peakTempF: 18 });
   });
 
   it("keeps the old peak when the reading improves but is still out of range", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 12, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 18 } }),
+      evaluateTempReading({ ...FREEZER, current: 12, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 0, openAlert: { peakTempF: 18 } }),
     ).toEqual({ action: "update", peakTempF: 18 });
   });
 
   it("does not close inside the hysteresis band (9°F for a 10°F ceiling)", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 9, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 18 } }),
+      evaluateTempReading({ ...FREEZER, current: 9, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 0, openAlert: { peakTempF: 18 } }),
     ).toEqual({ action: "update", peakTempF: 18 });
   });
 
   it("closes once back inside the range by 2°F", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 8, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 18 } }),
+      evaluateTempReading({ ...FREEZER, current: 8, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 120, openAlert: { peakTempF: 18 } }),
     ).toEqual({ action: "close" });
     expect(
-      evaluateTempReading({ ...FREEZER, current: -8, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: -13 } }),
-    ).toEqual({ action: "close" });
-    expect(
-      evaluateTempReading({ ...AC, current: 56, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 61 } }),
+      evaluateTempReading({ ...FREEZER, current: -8, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 120, openAlert: { peakTempF: -13 } }),
     ).toEqual({ action: "close" });
   });
 
-  it("AC (55–58): a high alert stays open at 57 and closes at 56; a low alert closes at 57", () => {
+  /**
+   * The close used to need the reading back inside by a 2 °F margin, and nothing else. The
+   * client's card of 26 Oct 2026 replaces that with a wait: "алерт вырубить, если температура
+   * спустилась ниже warning threshold и держалась 2ч". Two hours under the line is a far
+   * stronger guard against flapping than two degrees, so the margin went with it.
+   */
+  it("will not close on a reading that is merely back inside, however far inside", () => {
     expect(
-      evaluateTempReading({ ...AC, current: 57, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 61 } }),
-    ).toEqual({ action: "update", peakTempF: 61 });
+      evaluateTempReading({ ...FREEZER, current: -5, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 0, openAlert: { peakTempF: 18 } }),
+    ).toEqual({ action: "update", peakTempF: 18 });
     expect(
-      evaluateTempReading({ ...AC, current: 56, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 61 } }),
-    ).toEqual({ action: "close" });
+      evaluateTempReading({ ...FREEZER, current: 0, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 119, openAlert: { peakTempF: 18 } }),
+    ).toEqual({ action: "update", peakTempF: 18 });
+  });
+
+  it("a reading that climbs back out resets nothing but does not close either", () => {
+    // Still above the line two hours later: the wait is over, the temperature is not
     expect(
-      evaluateTempReading({ ...AC, current: 56, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 52 } }),
-    ).toEqual({ action: "update", peakTempF: 52 });
-    expect(
-      evaluateTempReading({ ...AC, current: 57, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: 52 } }),
-    ).toEqual({ action: "close" });
+      evaluateTempReading({ ...FREEZER, current: 14, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 200, openAlert: { peakTempF: 18 } }),
+    ).toEqual({ action: "update", peakTempF: 18 });
   });
 
   it("uses the current reading as peak when the alert has none yet", () => {
     expect(
-      evaluateTempReading({ ...FREEZER, current: 14, outOfRangeForMin: 0, runPeakTempF: null, openAlert: { peakTempF: null } }),
+      evaluateTempReading({ ...FREEZER, current: 14, outOfRangeForMin: 0, runPeakTempF: null, backInRangeForMin: 0, openAlert: { peakTempF: null } }),
     ).toEqual({ action: "update", peakTempF: 14 });
   });
 });
@@ -134,20 +137,6 @@ describe("range helpers", () => {
     expect(isOutOfRange(10, FREEZER)).toBe(false);
     expect(isOutOfRange(10.01, FREEZER)).toBe(true);
     expect(isOutOfRange(-10, FREEZER)).toBe(false);
-  });
-  it("isBackInRange applies the 2°F margin on the violated side", () => {
-    expect(isBackInRange(8, FREEZER, "high")).toBe(true);
-    expect(isBackInRange(8.5, FREEZER, "high")).toBe(false);
-    expect(isBackInRange(-9, FREEZER, "high")).toBe(true); // far from the violated bound
-    expect(isBackInRange(-8, FREEZER, "low")).toBe(true);
-    expect(isBackInRange(-9, FREEZER, "low")).toBe(false);
-    expect(isBackInRange(12, FREEZER, "high")).toBe(false); // still out of range
-  });
-  it("with an unknown side it needs the margin on both sides, clamped to half the width", () => {
-    expect(isBackInRange(0, FREEZER)).toBe(true);
-    expect(isBackInRange(9, FREEZER)).toBe(false);
-    expect(isBackInRange(56.5, AC)).toBe(true);
-    expect(isBackInRange(58, AC)).toBe(false);
   });
 });
 

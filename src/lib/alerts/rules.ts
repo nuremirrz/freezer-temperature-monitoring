@@ -4,19 +4,29 @@
  */
 
 /**
- * How long the temperature has to stay outside the range before an alert opens.
+ * How long cold storage has to stay above its line before an alert opens.
  *
- * Set by the client (13 Sep): "такая температура должна быть минимум час". A freezer in
- * defrost, a door held open during a delivery, an AC cycling off — all of these leave the
- * range for minutes at a time and none of them is a problem. An hour of it is.
+ * Two hours, from the client's card of 26 Oct 2026. It was one hour from 3 Oct, and before
+ * that the written spec said two — so this returns to the original number, now with evidence
+ * behind it. Replayed over three weeks of real readings the change takes the fleet from 32
+ * alerts to 3: a walk-in in defrost crosses its line for twenty minutes several times a week,
+ * and every one of those was a message nobody needed.
  *
- * The written spec said two hours for cold storage and five for an AC; over the whole history
- * no excursion ever lasted five, so the AC alarm would never have fired. Sanjar confirmed one
- * hour for every unit type on 3 Oct 2026. This is the agreed number, not a deviation.
+ * Only cold storage is judged this way. An air conditioner has its own rule and its own
+ * forty-five minutes (see cooling.ts).
  */
-export const SUSTAINED_OUT_OF_RANGE_MIN = 60;
-/** Alert closes only once the reading is back inside the range by this margin. */
-export const HYSTERESIS_F = 2;
+export const SUSTAINED_OUT_OF_RANGE_MIN = 120;
+
+/**
+ * And how long it has to stay back under the line before the alert is let go.
+ *
+ * The same two hours, the same card: "алерт вырубить, если температура спустилась ниже warning
+ * threshold и держалась 2ч". This replaces the 2 °F margin the close used to need — two hours
+ * under the line is a far stronger guard against flapping than two degrees, and keeping both
+ * would have meant a reading just under the threshold did not count as under it, which is not
+ * what the card asks for.
+ */
+export const SUSTAINED_BACK_IN_RANGE_MIN = 120;
 /** Uplink interval Dragino devices ship with; each Sensor row can override it. */
 export const DEFAULT_EXPECTED_INTERVAL_SEC = 300;
 /** Never notify about the same alert more often than this. */
@@ -60,21 +70,6 @@ export function alertSide(peakTempF: number | null, r: TempRange): AlertSide | n
   return null;
 }
 
-/**
- * Back inside the range with the hysteresis margin on the side that was violated:
- * a high alert on −10…10 closes at ≤ 8°F, a low one at ≥ −8°F.
- * Directional on purpose — a symmetric 2°F band would be empty for AC (55–58).
- * The margin never exceeds the range width (or half of it when the side is unknown).
- */
-export function isBackInRange(tempF: number, r: TempRange, side: AlertSide | null = null): boolean {
-  if (isOutOfRange(tempF, r)) return false;
-  const width = r.rangeMaxF - r.rangeMinF;
-  if (side === "high") return tempF <= r.rangeMaxF - Math.min(HYSTERESIS_F, width);
-  if (side === "low") return tempF >= r.rangeMinF + Math.min(HYSTERESIS_F, width);
-  const h = Math.min(HYSTERESIS_F, width / 2);
-  return tempF >= r.rangeMinF + h && tempF <= r.rangeMaxF - h;
-}
-
 /** How far outside the range a reading is (0 when inside). */
 export function deviation(tempF: number, r: TempRange): number {
   if (tempF > r.rangeMaxF) return tempF - r.rangeMaxF;
@@ -104,13 +99,18 @@ export interface TempEvaluation extends TempRange {
   outOfRangeForMin: number;
   /** The most extreme reading of the current out-of-range run, this one included. */
   runPeakTempF: number | null;
+  /**
+   * Minutes the temperature has been continuously back inside the range, counting from the
+   * last reading that was outside it. Only read while an alert is open.
+   */
+  backInRangeForMin: number;
   /** The currently open temp alert, if any */
   openAlert: { peakTempF: number | null } | null;
 }
 
 export function evaluateTempReading(e: TempEvaluation): TempDecision {
   if (e.openAlert) {
-    if (isBackInRange(e.current, e, alertSide(e.openAlert.peakTempF, e))) return { action: "close" };
+    if (!isOutOfRange(e.current, e) && e.backInRangeForMin >= SUSTAINED_BACK_IN_RANGE_MIN) return { action: "close" };
     const prevPeak = e.openAlert.peakTempF ?? e.current;
     return { action: "update", peakTempF: peakOf(prevPeak, e.current, e) };
   }

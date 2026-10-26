@@ -117,6 +117,30 @@ async function outOfRangeRun(
   return { startedAt, peakTempF: peakOf(lo, hi, bounds) };
 }
 
+/**
+ * How long the temperature has been continuously back inside the band, counting from the last
+ * reading that was outside it.
+ *
+ * The mirror of outOfRangeRun, and for the same reason: the client's card asks for two hours
+ * under the line before an alert is let go, so the question is not "is this reading inside"
+ * but "how long has it been". A walk-in in defrost crosses back and forth several times an
+ * hour, and closing on the first reading inside is what used to let it.
+ */
+async function backInRangeForMin(unitId: string, bounds: TempRange, reading: NewReading): Promise<number> {
+  const lastBad = await prisma.reading.findFirst({
+    where: {
+      unitId,
+      measuredAt: { lt: reading.measuredAt },
+      OR: [{ tempF: { lt: bounds.rangeMinF } }, { tempF: { gt: bounds.rangeMaxF } }],
+    },
+    orderBy: { measuredAt: "desc" },
+    select: { measuredAt: true },
+  });
+  // Never been outside: nothing is open either, so the number is not read. Say a lot.
+  if (!lastBad) return Number.POSITIVE_INFINITY;
+  return (reading.measuredAt.getTime() - lastBad.measuredAt.getTime()) / 60_000;
+}
+
 export interface NewReading {
   unitId: string;
   sensorId: string;
@@ -184,6 +208,10 @@ async function processTempReading(unit: UnitWithLocation, reading: NewReading, n
     current: reading.tempF,
     outOfRangeForMin: run ? (reading.measuredAt.getTime() - run.startedAt.getTime()) / 60_000 : 0,
     runPeakTempF: run?.peakTempF ?? null,
+    // Only asked for while an alert is open and this reading is back inside — the one case
+    // where the answer can close it.
+    backInRangeForMin:
+      openAlert && !isOutOfRange(reading.tempF, bounds) ? await backInRangeForMin(unit.id, bounds, reading) : 0,
     openAlert: openAlert ? { peakTempF: openAlert.peakTempF } : null,
   });
 
