@@ -38,7 +38,11 @@ export interface LocationsResponse {
 }
 
 export interface LastReading {
+  /// What the unit is judged by: the room for an AC, the probe for cold storage.
   tempF: number;
+  /// Air leaving the duct, from the same uplink. Null on cold storage, which has no duct, and
+  /// on an air conditioner wired without a probe.
+  probeTempF: number | null;
   measuredAt: string;
 }
 

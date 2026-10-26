@@ -171,6 +171,20 @@ function WeatherCard({ loc }: { loc: LocationDetail }) {
   );
 }
 
+/**
+ * The air leaving the duct, and how much colder it is than the room.
+ *
+ * Both come off the same reading, which is the only way the difference means anything: the
+ * sensor's own latest probe value could be from another minute, and subtracting two numbers
+ * measured at different times gives a drop nobody ever observed. Cold storage has no duct and
+ * shows nothing rather than a zero that would look like a verdict.
+ */
+function ductAndDrop(u: UnitDetail): { duct: number | null; drop: number | null } {
+  const duct = u.lastReading?.probeTempF ?? null;
+  if (u.type !== "ac" || !u.lastReading || duct === null) return { duct: null, drop: null };
+  return { duct, drop: u.lastReading.tempF - duct };
+}
+
 function UnitTemp({ u }: { u: UnitDetail }) {
   if (!u.lastReading) return <span className="text-offline">—</span>;
   return (
@@ -303,8 +317,9 @@ export default function LocationPanel({
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-2.5 font-medium">Equipment</th>
                 <th className="px-2 py-2.5 font-medium">Status</th>
-                <th className="px-2 py-2.5 font-medium">Temperature</th>
-                <th className="hidden px-2 py-2.5 font-medium @lg:table-cell">Normal Range</th>
+                <th className="px-2 py-2.5 font-medium">Room</th>
+                <th className="hidden px-2 py-2.5 font-medium @lg:table-cell">Duct</th>
+                <th className="px-2 py-2.5 font-medium">ΔT</th>
                 <th className="px-2 py-2.5 font-medium">Duration</th>
                 <th className="hidden w-8 px-2 py-2.5 @xl:table-cell" />
               </tr>
@@ -312,6 +327,7 @@ export default function LocationPanel({
             <tbody>
               {visible.map((u) => {
                 const Icon = TYPE_ICON[u.type];
+                const { duct, drop } = ductAndDrop(u);
                 return (
                   <tr
                     key={u.id}
@@ -345,8 +361,11 @@ export default function LocationPanel({
                     <td className="px-2 py-3 font-semibold tabular-nums">
                       <UnitTemp u={u} />
                     </td>
-                    <td className="hidden px-2 py-3 whitespace-nowrap text-muted @lg:table-cell">
-                      {formatRange(u)}
+                    <td className="hidden px-2 py-3 tabular-nums whitespace-nowrap text-muted @lg:table-cell">
+                      {duct === null ? "—" : formatTemp(duct)}
+                    </td>
+                    <td className="px-2 py-3 font-semibold tabular-nums whitespace-nowrap">
+                      {drop === null ? <span className="font-normal text-muted">—</span> : formatTemp(drop)}
                     </td>
                     <td className="px-2 py-3 tabular-nums text-muted">
                       {u.activeAlert ? formatDuration(u.activeAlert.openedAt) : "—"}

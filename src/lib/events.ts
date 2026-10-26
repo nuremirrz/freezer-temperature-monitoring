@@ -14,6 +14,9 @@ export interface ReadingEvent {
     sensorId: string;
     channel: number;
     tempF: number;
+    /// The duct from the same uplink. Carried here too, or the table's ΔT would go stale the
+    /// moment a live reading patched the room without it.
+    probeTempF: number | null;
     measuredAt: string;
   };
 }

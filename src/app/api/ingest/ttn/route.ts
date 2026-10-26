@@ -117,14 +117,14 @@ export async function POST(req: NextRequest) {
   );
   const inserted = readings
     .filter((r) => written.some((w) => w.unitId === r.unitId && w.channel === r.channel))
-    .map((r) => ({ unitId: r.unitId, channel: r.channel, tempF: r.tempF }));
+    .map((r) => ({ unitId: r.unitId, channel: r.channel, tempF: r.tempF, probeTempF: r.probeTempF }));
 
   // Alerts — after the writes. Cheap queries; notifications inside are fire-and-forget.
   await safeAlerts(async () => {
     await resolveOfflineForSensor(sensor.id, now);
     for (const r of inserted) {
       await processNewReading(
-        { unitId: r.unitId, sensorId: sensor.id, channel: r.channel, tempF: r.tempF, measuredAt: u.receivedAt },
+        { unitId: r.unitId, sensorId: sensor.id, channel: r.channel, tempF: r.tempF, probeTempF: r.probeTempF, measuredAt: u.receivedAt },
         now,
       );
     }

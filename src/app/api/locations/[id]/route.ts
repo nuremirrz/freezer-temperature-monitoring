@@ -13,6 +13,10 @@ export const dynamic = "force-dynamic";
 interface LatestRow {
   unitId: string;
   tempF: number;
+  /// The duct, from the same uplink as the room. An AC is judged by the distance between the
+  /// two, so they have to come off one row — the sensor's own latest probe value could be from
+  /// a different minute and would make the difference a number nobody measured.
+  probeTempF: number | null;
   measuredAt: Date;
 }
 
@@ -53,7 +57,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (unitIds.length) {
     const placeholders = unitIds.map((_, i) => `$${i + 1}`).join(", ");
     const rows = await prisma.$queryRawUnsafe<LatestRow[]>(
-      `SELECT DISTINCT ON ("unitId") "unitId", "tempF", "measuredAt"
+      `SELECT DISTINCT ON ("unitId") "unitId", "tempF", "probeTempF", "measuredAt"
        FROM "Reading"
        WHERE "unitId" IN (${placeholders})
        ORDER BY "unitId", "measuredAt" DESC`,
@@ -109,7 +113,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       probeMinF: u.probeMinF,
       probeMaxF: u.probeMaxF,
       status,
-      lastReading: last ? { tempF: last.tempF, measuredAt: last.measuredAt.toISOString() } : null,
+      lastReading: last
+        ? { tempF: last.tempF, probeTempF: last.probeTempF, measuredAt: last.measuredAt.toISOString() }
+        : null,
       trend: trendOf(recent.get(u.id) ?? []),
       activeAlert: active
         ? {

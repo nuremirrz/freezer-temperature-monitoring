@@ -138,6 +138,7 @@ export const useLiveStore = create<LiveState>((set, get) => ({
           unitId: string;
           locationId: string;
           tempF: number;
+          probeTempF: number | null;
           measuredAt: string;
         };
         // Patch the open location in place so the number moves immediately
@@ -152,7 +153,7 @@ export const useLiveStore = create<LiveState>((set, get) => ({
                 ...detail,
                 units: detail.units.map((u) =>
                   u.id === data.unitId
-                    ? { ...u, lastReading: { tempF: data.tempF, measuredAt: data.measuredAt } }
+                    ? { ...u, lastReading: { tempF: data.tempF, probeTempF: data.probeTempF ?? null, measuredAt: data.measuredAt } }
                     : u,
                 ),
               },

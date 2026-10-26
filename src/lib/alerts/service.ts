@@ -122,6 +122,10 @@ export interface NewReading {
   sensorId: string;
   channel: number;
   tempF: number;
+  /// The duct from the same uplink, for the live event. Optional: the alert rules read the
+  /// stored rows rather than this, so a caller that has not got it loses nothing but the ΔT
+  /// on an open screen until the next refresh.
+  probeTempF?: number | null;
   measuredAt: Date;
 }
 
@@ -148,6 +152,7 @@ export async function processNewReading(reading: NewReading, now: Date = new Dat
       sensorId: reading.sensorId,
       channel: reading.channel,
       tempF: reading.tempF,
+      probeTempF: reading.probeTempF ?? null,
       measuredAt: reading.measuredAt.toISOString(),
     },
   });
