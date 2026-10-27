@@ -687,9 +687,11 @@ check("и ни одной not_cooling на холодильном оборудо
 console.log("\n=== холодильное оборудование: два часа на вход, два на выход ===");
 // Карточка клиента от 26 окт: тревога только если держится выше линии два часа подряд, и
 // снимается только если два часа подряд держалась ниже. Оттайка пересекает линию на двадцать
-// минут несколько раз в неделю — раньше каждая такая была сообщением.
+// минут несколько раз в неделю — раньше каждая такая была сообщением. Сама линия у морозильника
+// 20 °F: 26 окт её подняли до 29, на следующий день вернули. Два часа остались, и фильтрует
+// именно они, так что сценарий ходит заведомо далеко от линии с обеих сторон.
 const coldUnit = await prisma.unit.create({
-  data: { locationId: acLoc.id, type: "walk_in_freezer", name: "WIF two-hour", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 29 },
+  data: { locationId: acLoc.id, type: "walk_in_freezer", name: "WIF two-hour", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 },
 });
 await prisma.sensorChannel.create({ data: { sensorId: acSensor.id, channel: 3, unitId: coldUnit.id } });
 const coldOpen = () => prisma.alert.count({ where: { unitId: coldUnit.id, type: "temp_out_of_range", resolvedAt: null } });

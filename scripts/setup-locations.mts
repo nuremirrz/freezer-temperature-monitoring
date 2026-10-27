@@ -27,11 +27,13 @@ import type { UnitType } from "../src/generated/prisma/client";
  * A freezer's low alert sits out of reach on purpose — it cannot be too cold. A kitchen is
  * allowed to run warmer than a dining room, 80 against 77.
  *
- * A freezer alarms from 29 °F, raised from 20 on 26 Oct 2026 at the client's request, together
- * with the two hours it now has to hold there. Replayed over three weeks the pair takes the
- * fleet from 32 alerts to 3 — a walk-in in defrost crosses 20 °F for twenty minutes several
- * times a week, and every one of those was a message nobody needed. The cooler's 50 °F is
- * unchanged; the card only moved the freezer.
+ * A freezer alarms from 20 °F. The line went up to 29 on 26 Oct 2026 and back down to 20 the
+ * next day, the client's call both times; the cooler's 50 °F was never in question. What stays
+ * from 26 Oct is the two hours the temperature has to hold above the line, and that is the half
+ * of the pair doing the filtering: the eleven alerts Norco lost in that replay were defrost
+ * cycles crossing 20 °F for twenty minutes, and twenty minutes never reaches two hours whatever
+ * the line is. What comes back at 20 °F are Whittier's three multi-hour excursions, which the
+ * replay flagged as lost because they peaked near 50 °F without ever staying above 29.
  *
  * The dining room was 75 until 14 Oct 2026. The client's card of 16 Sep said 75 and contradicted
  * itself elsewhere (its colour table and its range list had kitchen and dining swapped; see
@@ -63,7 +65,7 @@ interface UnitSeed {
 }
 
 const COOLER = { type: "walk_in_cooler", rangeMinF: 33, rangeMaxF: 40, alertMinF: 33, alertMaxF: 50 } as const;
-const FREEZER = { type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 29 } as const;
+const FREEZER = { type: "walk_in_freezer", rangeMinF: 0, rangeMaxF: 10, alertMinF: -40, alertMaxF: 20 } as const;
 const AC_KITCHEN = { type: "ac", rangeMinF: 65, rangeMaxF: 80, alertMinF: 65, alertMaxF: 85, probeMinF: 50, probeMaxF: 56 } as const;
 const AC_DINING = { type: "ac", rangeMinF: 65, rangeMaxF: 77, alertMinF: 65, alertMaxF: 80, probeMinF: 50, probeMaxF: 56 } as const;
 
