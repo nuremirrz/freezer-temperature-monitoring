@@ -13,8 +13,16 @@ name: Daily database backup
 
 on:
   schedule:
-    # 09:00 UTC — 02:00 in California, the quietest hour for the restaurants.
-    - cron: "0 9 * * *"
+    # 09:43 UTC — still the middle of the California night, when the restaurants are quiet and
+    # a dump adds no load to a database that is also taking readings.
+    #
+    # The odd minute is deliberate. GitHub runs scheduled workflows when a free runner is spare,
+    # and the queue is longest at the top of the hour, where most crons are written. At "0 9"
+    # this job was starting six to ten hours late through late October — on 2 Nov it ran at
+    # 19:14 UTC. Moving off the hour does not make the schedule exact; it shortens the queue
+    # the job joins. The backup must stay daily, so whatever the drift, check the run history
+    # rather than assume the cron time.
+    - cron: "43 9 * * *"
   workflow_dispatch:
 
 concurrency:
